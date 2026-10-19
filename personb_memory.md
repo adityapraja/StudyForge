@@ -200,3 +200,25 @@ A test suite with 45 tests across 6 test files was implemented using Vitest + Su
 
 All tests run cleanly via `npm test` from both `server/` and repository root.
 
+---
+
+## 4. CI Fix & Cross-Platform Test Database Resolution
+
+### Issue Encountered in GitHub Actions CI
+- **Error:**
+  ```text
+  Error: Command failed: /usr/pgsql-18/bin/initdb -D /tmp/test_pgdata -U postgres -A trust
+  status: 127
+  ```
+- **Root Cause:**
+  `server/test/global-setup.js` was hardcoding a fallback connection URL and attempting to spawn a local PostgreSQL cluster using `/usr/pgsql-18/bin/initdb`. While `/usr/pgsql-18` existed in the local development environment, GitHub Actions Ubuntu runners run an external PostgreSQL service container (`postgres:16` on `localhost:5432`) and pass `DATABASE_URL` via the workflow environment. Because `global-setup.js` overwrote `process.env.DATABASE_URL`, it ignored the active CI PostgreSQL service and failed when trying to invoke the non-existent `/usr/pgsql-18/bin/initdb` binary.
+
+### Resolution & Code Changes
+1. **Support External `DATABASE_URL` First (`server/test/global-setup.js`):**
+   - The setup hook now checks if `process.env.DATABASE_URL` is already supplied.
+   - If present, it waits for the service to be healthy, applies `server/schema.sql`, and immediately returns without attempting to spawn any local processes.
+2. **Dynamic Binary Discovery for Local Development:**
+   - Added a `findPgBinary(name)` helper that checks `PATH` (`which initdb`) and standard package locations across distros (Fedora `/usr/pgsql-*` and Ubuntu/Debian `/usr/lib/postgresql/*`), ensuring portability across any environment.
+3. **Verification:**
+   - Both CI environment (where `DATABASE_URL` is supplied) and local development (where fallback embedded cluster is used) run seamlessly and pass all 45 test cases.
+

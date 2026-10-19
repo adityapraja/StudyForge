@@ -5,6 +5,28 @@ import pg from 'pg';
 
 let pgProcess = null;
 
+const findPgBinary = (name) => {
+  const candidates = [
+    name,
+    `/usr/pgsql-18/bin/${name}`,
+    `/usr/pgsql-17/bin/${name}`,
+    `/usr/pgsql-16/bin/${name}`,
+    `/usr/lib/postgresql/16/bin/${name}`,
+    `/usr/lib/postgresql/15/bin/${name}`,
+    `/usr/lib/postgresql/14/bin/${name}`,
+  ];
+  for (const c of candidates) {
+    try {
+      execSync(`which ${c}`, { stdio: 'ignore' });
+      return c;
+    } catch (e) {}
+    if (fs.existsSync(c)) {
+      return c;
+    }
+  }
+  return name;
+};
+
 const cleanLocks = (pgData, socketDir) => {
   try {
     fs.unlinkSync(path.join(pgData, 'postmaster.pid'));
@@ -18,6 +40,35 @@ const cleanLocks = (pgData, socketDir) => {
 };
 
 export async function setup() {
+  // 1. If DATABASE_URL is already provided (e.g. GitHub Actions CI service), use it directly
+  const existingUrl = process.env.DATABASE_URL;
+  if (existingUrl) {
+    let ready = false;
+    for (let i = 0; i < 30; i++) {
+      try {
+        const client = new pg.Client({ connectionString: existingUrl });
+        await client.connect();
+        await client.query('SELECT 1');
+        await client.end();
+        ready = true;
+        break;
+      } catch (err) {
+        await new Promise((res) => setTimeout(res, 500));
+      }
+    }
+
+    if (ready) {
+      // Pre-load schema into the CI database
+      const pool = new pg.Pool({ connectionString: existingUrl });
+      const schemaPath = path.resolve(import.meta.dirname, '../schema.sql');
+      const schemaSql = fs.readFileSync(schemaPath, 'utf8');
+      await pool.query(schemaSql);
+      await pool.end();
+      return;
+    }
+  }
+
+  // 2. Otherwise, start a local test postgres cluster for development
   const pgData = '/tmp/test_pgdata';
   const socketDir = '/tmp/pgsockets';
   fs.mkdirSync(socketDir, { recursive: true });
@@ -35,14 +86,17 @@ export async function setup() {
   } catch (e) {}
 
   if (!alreadyRunning) {
+    const initdbBin = findPgBinary('initdb');
+    const postgresBin = findPgBinary('postgres');
+
     if (!fs.existsSync(pgData)) {
-      execSync(`/usr/pgsql-18/bin/initdb -D ${pgData} -U postgres -A trust`, { stdio: 'ignore' });
+      execSync(`${initdbBin} -D ${pgData} -U postgres -A trust`, { stdio: 'ignore' });
     }
 
     cleanLocks(pgData, socketDir);
 
     pgProcess = spawn(
-      '/usr/pgsql-18/bin/postgres',
+      postgresBin,
       ['-D', pgData, '-p', '5433', '-k', socketDir],
       { stdio: 'ignore' }
     );
@@ -87,8 +141,9 @@ export async function setup() {
 
 export async function teardown() {
   if (pgProcess) {
-    pgProcess.kill('SIGINT');
+    try {
+      pgProcess.kill('SIGINT');
+    } catch (e) {}
     pgProcess = null;
   }
 }
-
