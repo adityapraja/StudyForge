@@ -1,0 +1,12 @@
+{
+  "name": "study-forge",
+  "version": "1.0.0",
+  "description": "Study Habit Tracker monorepo",
+  "private": true,
+  "scripts": {
+    "start": "npm --prefix server start",
+    "dev": "npm --prefix server dev",
+    "test": "npm --prefix server test"
+  }
+}
+
