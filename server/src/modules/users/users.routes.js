@@ -10,6 +10,7 @@ import {
   getUserGoalsWithProgress,
   updateUserGoals,
 } from './users.service.js';
+import { exportSessionsCsv } from '../export/export.service.js';
 
 const router = Router();
 
@@ -56,6 +57,19 @@ router.get('/goals', async (req, res, next) => {
   }
 });
 
+router.get('/export.csv', async (req, res, next) => {
+  try {
+    const csv = await exportSessionsCsv(req.user.id, req.user.time_zone);
+    res
+      .status(200)
+      .type('text/csv')
+      .set('Content-Disposition', 'attachment; filename="study-sessions.csv"')
+      .send(csv);
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.put('/goals', validate({ body: updateGoalsSchema }), async (req, res, next) => {
   try {
     const updated = await updateUserGoals(req.user.id, req.body);
@@ -66,4 +80,3 @@ router.put('/goals', validate({ body: updateGoalsSchema }), async (req, res, nex
 });
 
 export default router;
-

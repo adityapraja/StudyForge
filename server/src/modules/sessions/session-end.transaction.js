@@ -164,6 +164,18 @@ export const executeSessionEndTransaction = async (client, user, session, option
          updated_at = NOW()`,
       [user.id, seg.day, countedMinutes, countedVerified]
     );
+
+    await client.query(
+      `INSERT INTO subject_daily_totals
+         (user_id, subject_id, day, minutes, verified_minutes)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (user_id, subject_id, day)
+       DO UPDATE SET
+         minutes = subject_daily_totals.minutes + EXCLUDED.minutes,
+         verified_minutes = subject_daily_totals.verified_minutes + EXCLUDED.verified_minutes,
+         updated_at = NOW()`,
+      [user.id, endedSession.subject_id, seg.day, countedMinutes, countedVerified]
+    );
   }
 
   // Award XP (only for verified sessions, capped at 4 hours)

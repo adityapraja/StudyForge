@@ -8,6 +8,6 @@ export default defineConfig({
     hookTimeout: 15000,
     fileParallelism: false,
     globalSetup: './test/global-setup.js',
+    setupFiles: ['./test/setup.js'],
   },
 });
-

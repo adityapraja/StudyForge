@@ -5,10 +5,27 @@ import jwt from 'jsonwebtoken';
 let testPool = null;
 
 const getConnectionString = () => {
-  return (
+  const connectionString =
+    process.env.TEST_DATABASE_URL ||
     process.env.DATABASE_URL ||
     'postgres://postgres@localhost:5433/tracker_test?host=/tmp/pgsockets'
-  );
+  let target;
+  try {
+    target = new URL(connectionString);
+  } catch {
+    throw new Error('Test database URL is invalid.');
+  }
+
+  if (
+    target.hostname.toLowerCase() !== 'localhost'
+    || !['5432', '5433'].includes(target.port || '5432')
+    || target.pathname.replace(/^\/+/, '') !== 'tracker_test'
+    || decodeURIComponent(target.username) !== 'postgres'
+  ) {
+    throw new Error('Tests may only connect to a local tracker_test database as postgres.');
+  }
+
+  return connectionString;
 };
 
 export const getTestPool = () => {
@@ -100,4 +117,3 @@ export const createTestSubject = async (userId, overrides = {}) => {
 
   return rows[0];
 };
-

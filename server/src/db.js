@@ -14,7 +14,10 @@ let _pool = null;
 export const getPool = () => {
   if (!_pool) {
     _pool = new Pool({
-      connectionString: config.databaseUrl,
+      connectionString:
+        process.env.NODE_ENV === 'test' && process.env.TEST_DATABASE_URL
+          ? process.env.TEST_DATABASE_URL
+          : config.databaseUrl,
     });
   }
   return _pool;
@@ -47,6 +50,34 @@ export const initDb = async () => {
   const schemaPath = path.resolve(__dirname, '../schema.sql');
   const sql = fs.readFileSync(schemaPath, 'utf8');
   await getPool().query(sql);
+
+  const migrationsPath = path.resolve(__dirname, '../migrations');
+  if (!fs.existsSync(migrationsPath)) return;
+
+  await query(
+    `CREATE TABLE IF NOT EXISTS schema_migrations (
+       name TEXT PRIMARY KEY,
+       applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+     )`
+  );
+
+  const migrations = fs.readdirSync(migrationsPath)
+    .filter((name) => /^\d+_[\w-]+\.sql$/.test(name))
+    .sort();
+
+  for (const name of migrations) {
+    const { rows } = await query(
+      'SELECT 1 FROM schema_migrations WHERE name = $1',
+      [name]
+    );
+    if (rows.length > 0) continue;
+
+    const migrationSql = fs.readFileSync(path.join(migrationsPath, name), 'utf8');
+    await withTransaction(async (client) => {
+      await client.query(migrationSql);
+      await client.query('INSERT INTO schema_migrations (name) VALUES ($1)', [name]);
+    });
+  }
 };
 
 export const closeDb = async () => {
@@ -55,4 +86,3 @@ export const closeDb = async () => {
     _pool = null;
   }
 };
-

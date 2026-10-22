@@ -80,6 +80,23 @@ CREATE TABLE IF NOT EXISTS daily_totals (
 
 CREATE INDEX IF NOT EXISTS idx_daily_totals_day_user ON daily_totals(day, user_id);
 
+-- Per-subject daily totals stay aligned with the same local-day and daily-cap
+-- accounting used by the session-end transaction.
+CREATE TABLE IF NOT EXISTS subject_daily_totals (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  subject_id UUID NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+  day DATE NOT NULL,
+  minutes INTEGER NOT NULL DEFAULT 0 CHECK (minutes >= 0),
+  verified_minutes INTEGER NOT NULL DEFAULT 0 CHECK (verified_minutes >= 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, subject_id, day)
+);
+
+CREATE INDEX IF NOT EXISTS idx_subject_daily_totals_user_day
+  ON subject_daily_totals(user_id, day);
+
 -- 5. Streaks
 CREATE TABLE IF NOT EXISTS streaks (
   user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -105,23 +122,36 @@ CREATE TABLE IF NOT EXISTS xp_events (
 
 CREATE INDEX IF NOT EXISTS idx_xp_events_user ON xp_events(user_id);
 
--- 7. Daily Goals (Planner)
-CREATE TABLE IF NOT EXISTS daily_goals (
+-- 7. Planner Days and Goals
+CREATE TABLE IF NOT EXISTS planner_days (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   date DATE NOT NULL,
-  target_minutes INTEGER NOT NULL CHECK (target_minutes >= 0),
   reflection VARCHAR(500),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (user_id, date)
 );
 
+CREATE TABLE IF NOT EXISTS planner_goals (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  date DATE NOT NULL,
+  subject_id UUID REFERENCES subjects(id) ON DELETE SET NULL,
+  text VARCHAR(200) NOT NULL,
+  target_seconds INTEGER NOT NULL CHECK (target_seconds >= 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_planner_goals_user_date ON planner_goals(user_id, date);
+
 -- 8. Tasks (Planner)
 CREATE TABLE IF NOT EXISTS tasks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   date DATE NOT NULL,
+  carried_from_task_id UUID REFERENCES tasks(id) ON DELETE SET NULL,
   text VARCHAR(200) NOT NULL,
   done BOOLEAN NOT NULL DEFAULT false,
   carried_over BOOLEAN NOT NULL DEFAULT false,
@@ -130,6 +160,9 @@ CREATE TABLE IF NOT EXISTS tasks (
 );
 
 CREATE INDEX IF NOT EXISTS idx_tasks_user_date ON tasks(user_id, date);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_carry_over_once
+  ON tasks(user_id, date, carried_from_task_id)
+  WHERE carried_from_task_id IS NOT NULL;
 
 -- 9. Syllabus Topics
 CREATE TABLE IF NOT EXISTS syllabus_topics (

@@ -214,7 +214,7 @@ Errors: `INVALID_CREDENTIALS` (same message whether the email or password is wro
 }
 ```
 
-**`GET /me/export.csv`** returns a file with the header `date,subject,start,end,duration_minutes,note`. Only the signed-in user's sessions.
+**`GET /me/export.csv`** returns `study-sessions.csv` with the header `date,subject,start,end,duration_minutes,note`. Only the signed-in user's ended sessions are included; CSV values are escaped.
 
 **`DELETE /me`** requires `{ "password": "..." }`. Returns `{ "ok": true }` and clears the cookie.
 
@@ -354,6 +354,7 @@ All filters are optional. `from` and `to` are local dates. `q` searches notes. R
 ```
 
 `review` is calculated by the server from sessions and tasks; the client never sends it.
+Goals may optionally target one of the user's own subjects. Goal progress uses that subject's counted time; goals without a subject use the user's daily total. The date is a local calendar date in the user's time zone.
 
 **`PUT /planner/2026-10-17`** replaces the day's data. Send the full list:
 
@@ -365,9 +366,9 @@ All filters are optional. `from` and `to` are local dates. `q` searches notes. R
 }
 ```
 
-Tasks with an `id` are updated, tasks without one are created, tasks missing from the list are deleted. Rules: at most **3 goals** (`GOAL_LIMIT_REACHED`), task text 1 to 200 characters, reflection up to 500 characters. Returns the same shape as `GET`.
+Tasks with an `id` are updated, tasks without one are created, tasks missing from the list are deleted. Rules: **1 to 3 goals** (`GOAL_LIMIT_REACHED`), goal and task text 1 to 200 characters, reflection up to 500 characters. IDs must belong to the signed-in user and date. Returns the same shape as `GET`.
 
-**`POST /planner/2026-10-17/carry-over`** copies today's unfinished tasks to the next day marked `carried_over: true`. Done tasks are not copied, and running it twice does not create duplicates. Returns `{ "carried": 2 }`.
+**`POST /planner/2026-10-17/carry-over`** copies today's unfinished tasks to the next day marked `carried_over: true`. Done tasks are not copied, and running it twice does not create duplicates. Returns `{ "carried": 2 }`. Invalid dates return `VALIDATION_ERROR`; unauthenticated requests return `UNAUTHENTICATED`.
 
 ## 8. Syllabus
 
@@ -619,3 +620,4 @@ Every item carries its `numbers`. The list can be empty when there is not enough
 | Version | Date | Change |
 | --- | --- | --- |
 | 1 | Oct 17, 2026 | First version |
+| 2 | Oct 21, 2026 | Person C Phase 1 planner, statistics and CSV export behavior |

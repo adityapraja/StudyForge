@@ -122,24 +122,26 @@ PostgreSQL holds everything.
 | `users` | id, email, password_hash, username, time_zone, category, privacy (JSONB), xp, level, leaderboard_hidden | Unique on email and lower(username) |
 | `subjects` | id, user_id, name, color | Unique on (user_id, name) |
 | `sessions` | id, user_id, subject_id, started_at, ended_at, paused_seconds, break_seconds, note, source, verified | Index (user_id, started_at); `ended_at` empty while the session is open |
-| `daily_goals` | id, user_id, date, target_minutes, reflection | Unique on (user_id, date) |
-| `tasks` | id, user_id, date, text, done, carried_over | Index (user_id, date) |
+| `planner_days` | id, user_id, date, reflection | Unique on (user_id, date) |
+| `planner_goals` | id, user_id, date, subject_id, text, target_seconds | API limits each day to 1-3 goals |
+| `tasks` | id, user_id, date, text, done, carried_over, carried_from_task_id | Index (user_id, date); unique carry-over per source task and destination date |
 | `syllabus_topics` | id, subject_id, parent_id, title, status, position | Parent link; recursive query for the tree |
 | `exams` | id, user_id, subject_id, date, target_hours | |
 | `friendships` | requester_id, receiver_id, status | Unique on the pair |
 | `streaks` | user_id, current, longest, freeze_week, freezes_used | One row per user |
 | `xp_events` | id, user_id, session_id, kind, amount, day | Unique on (session_id, kind) to stop double awards |
-| `daily_totals` | user_id, day (local date), minutes, verified_minutes | Updated at session end; feeds heatmap, streaks and leaderboards |
+| `daily_totals` | user_id, day (local date), minutes, verified_minutes | Updated at session end; feeds heatmap, progress, streaks and leaderboards |
+| `subject_daily_totals` | user_id, subject_id, day (local date), minutes, verified_minutes | Updated in the session-end transaction; feeds subject statistics |
 
 **Design choices**
 
 - All timestamps are stored in UTC (`timestamptz`).
 - Study time = `ended_at - started_at - paused_seconds - break_seconds`, calculated once when the session is saved.
-- `daily_totals` is the read model: the heatmap, streak check and leaderboards read it instead of scanning raw sessions.
+- `daily_totals` is the read model for daily activity; `subject_daily_totals` keeps the same counted minutes by subject for subject statistics.
 - **Leaderboards are SQL queries**, not a cache: sum `verified_minutes` from `daily_totals` for the period, grouped by user, filtered by category, ordered descending, limited to the top N. An index on (day, user_id) keeps this fast.
 - Database check constraints: `ended_at > started_at`, non-negative pause and break seconds, maximum session length.
 - Account deletion removes the user's rows in one transaction (foreign keys cascade).
-- Schema changes are plain SQL files run in order (or `node-pg-migrate`).
+- Schema changes are plain SQL files run in order and recorded in `schema_migrations`.
 
 ## 7. Timer accuracy and session recovery
 

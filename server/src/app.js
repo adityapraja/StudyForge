@@ -10,6 +10,8 @@ import authRoutes from './modules/auth/auth.routes.js';
 import usersRoutes from './modules/users/users.routes.js';
 import subjectsRoutes from './modules/subjects/subjects.routes.js';
 import sessionsRoutes from './modules/sessions/sessions.routes.js';
+import plannerRoutes from './modules/planner/planner.routes.js';
+import statsRoutes from './modules/stats/stats.routes.js';
 
 export const createApp = () => {
   const app = express();
@@ -39,6 +41,8 @@ export const createApp = () => {
   app.use('/api/me', usersRoutes);
   app.use('/api/subjects', subjectsRoutes);
   app.use('/api/sessions', sessionsRoutes);
+  app.use('/api/planner', plannerRoutes);
+  app.use('/api/stats', statsRoutes);
 
   // 404 handler for undefined routes
   app.use((req, res, next) => {
@@ -52,4 +56,3 @@ export const createApp = () => {
 };
 
 export default createApp;
-

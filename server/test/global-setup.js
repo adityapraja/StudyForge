@@ -2,8 +2,11 @@ import { spawn, execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import pg from 'pg';
+import dotenv from 'dotenv';
 
 let pgProcess = null;
+
+dotenv.config({ path: path.resolve(import.meta.dirname, '../.env') });
 
 const findPgBinary = (name) => {
   const candidates = [
@@ -40,9 +43,28 @@ const cleanLocks = (pgData, socketDir) => {
 };
 
 export async function setup() {
-  // 1. If DATABASE_URL is already provided (e.g. GitHub Actions CI service), use it directly
-  const existingUrl = process.env.DATABASE_URL;
+  // Prefer a dedicated local test URL; CI supplies DATABASE_URL for its test service.
+  const existingUrl = process.env.TEST_DATABASE_URL
+    || ((process.platform !== 'win32' || process.env.CI) ? process.env.DATABASE_URL : null);
   if (existingUrl) {
+    let target;
+    try {
+      target = new URL(existingUrl);
+    } catch {
+      throw new Error('The configured test database URL is invalid.');
+    }
+    if (
+      target.hostname.toLowerCase() !== 'localhost'
+      || (target.port || '5432') !== '5432'
+      || target.pathname.replace(/^\/+/, '') !== 'tracker_test'
+      || decodeURIComponent(target.username) !== 'postgres'
+    ) {
+      throw new Error('Automated tests may only use localhost:5432/tracker_test as postgres.');
+    }
+
+    process.env.DATABASE_URL = existingUrl;
+    process.env.TEST_DATABASE_URL = existingUrl;
+    process.env.NODE_ENV = 'test';
     let ready = false;
     for (let i = 0; i < 30; i++) {
       try {
@@ -58,23 +80,32 @@ export async function setup() {
     }
 
     if (ready) {
-      // Pre-load schema into the CI database
-      const pool = new pg.Pool({ connectionString: existingUrl });
-      const schemaPath = path.resolve(import.meta.dirname, '../schema.sql');
-      const schemaSql = fs.readFileSync(schemaPath, 'utf8');
-      await pool.query(schemaSql);
-      await pool.end();
+      const { initDb, closeDb } = await import('../src/db.js');
+      try {
+        await initDb();
+      } finally {
+        await closeDb();
+      }
       return;
     }
+    throw new Error('Could not connect to the configured test database. Check TEST_DATABASE_URL.');
   }
 
-  // 2. Otherwise, start a local test postgres cluster for development
+  if (process.platform === 'win32') {
+    throw new Error(
+      'Set TEST_DATABASE_URL to a dedicated PostgreSQL test database before running tests on Windows.'
+    );
+  }
+
+  // Linux development fallback for a locally managed test cluster.
   const pgData = '/tmp/test_pgdata';
   const socketDir = '/tmp/pgsockets';
   fs.mkdirSync(socketDir, { recursive: true });
 
   const connUrl = `postgres://postgres@localhost:5433/tracker_test?host=${socketDir}`;
   process.env.DATABASE_URL = connUrl;
+  process.env.TEST_DATABASE_URL = connUrl;
+  process.env.NODE_ENV = 'test';
 
   // Check if test cluster is already active
   let alreadyRunning = false;
@@ -132,11 +163,12 @@ export async function setup() {
   }
 
   // Ensure schema is up to date
-  const pool = new pg.Pool({ connectionString: connUrl });
-  const schemaPath = path.resolve(import.meta.dirname, '../schema.sql');
-  const schemaSql = fs.readFileSync(schemaPath, 'utf8');
-  await pool.query(schemaSql);
-  await pool.end();
+  const { initDb, closeDb } = await import('../src/db.js');
+  try {
+    await initDb();
+  } finally {
+    await closeDb();
+  }
 }
 
 export async function teardown() {
