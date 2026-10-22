@@ -502,11 +502,83 @@ Test Files  15 passed (15)
 
 **Date:** Oct 22, 2026  
 **Change:**
-1. **`docker-compose.yml`**: Added standard PostgreSQL 16 container (`postgres:16-alpine`) named `studyforge-postgres` with database `tracker`, credentials `postgres:postgres`, persistent volume `studyforge-pgdata`, port `5433:5432`, and health check. Port 5433 is exposed on host to prevent conflicts if the host already runs native PostgreSQL on 5432.
+1. **`docker-compose.yml`**: Added standard PostgreSQL 16 container (`postgres:16-alpine`) named `studyforge-postgres` with database `tracker`, credentials `postgres:postgres`, persistent volume `studyforge-pgdata`, port `5434:5432`, and health check. Port 5434 is exposed on host to completely avoid conflicts with native PostgreSQL (5432) and the automated test cluster (5433).
 2. **`package.json`**: Added `"docker:up": "docker compose up -d"` and `"docker:down": "docker compose down"`.
-3. **`.env` & `server/.env`**: Configured `DATABASE_URL=postgres://postgres:postgres@localhost:5433/tracker` in both root and `server/` to ensure seamless local connection to Docker PostgreSQL.
+3. **`.env` & `server/.env`**: Configured `DATABASE_URL=postgres://postgres:postgres@localhost:5434/tracker` in both root and `server/` to ensure seamless local connection to Docker PostgreSQL.
 - **Why:** Enables running an isolated, containerized PostgreSQL database with a single command without port collisions or requiring PostgreSQL configuration on the host machine.
 4. **Client Setup Verification**: Installed client dependencies (`react`, `react-dom`, `@vitejs/plugin-react`, `vite`) and verified clean production build (`npm --prefix client run build`) with Vite proxy routing `/api` to Express on port 3000.
+
+---
+
+## 9. Phase 3 Execution — Rate Limiting, Gate 2 Anti-Cheat & Nightly Audit
+
+**Role:** Person B — Backend Core, Authentication & Security  
+**Phase:** Phase 3 (Social)  
+**Date:** Oct 22, 2026  
+
+### A. Objectives & Responsibilities (Person B in Phase 3)
+As defined in `docs/Study_Habit_Tracker_Project_Execution (1).md` and `docs/Study_Habit_Tracker_Architecture_Simple.md`:
+1. **Friend Request Rate Limiter:** Protect social graph endpoints from spam and automated requests.
+2. **Gate 2 Anti-Cheat Enforcement:** Ensure study time cannot be faked on social features:
+   - Manual sessions marked `verified: false`, earn 0 XP, and are strictly excluded from leaderboards.
+   - 16-hour daily study cap and 12-hour max session cap strictly enforced.
+   - 4-hour (240 XP) session XP cap strictly enforced.
+   - Overlapping sessions strictly rejected with 409 `SESSION_OVERLAP`.
+3. **Nightly Audit Query Service:** Provide automated queries to detect cap saturation, suspicious high volume, and discrepancies between session logs and `daily_totals`.
+
+### B. Code Changes Made
+
+#### 1. Friend Request Rate Limiting (`server/src/middleware/rate-limit.js`)
+- **Change:** Implemented and exported `friendRequestRateLimiter`:
+  - 15-minute window (`windowMs = 15 * 60 * 1000`).
+  - Max 15 requests per 15 minutes in development/production (relaxed in test environment).
+  - Standardized JSON error response `{ error: { code: 'RATE_LIMITED', message: 'Too many friend requests sent. Please try again later.' } }`.
+- **Why:** Required by PRD Section 10 and Architecture Section 10 to prevent friend request spamming and scraping. Ready for Person C to mount on `POST /api/friends/requests`.
+
+#### 2. Nightly Anti-Cheat Audit Service (`server/src/modules/progression/audit.service.js`)
+- **Change:** Created audit service with three specialized queries:
+  - `findSuspiciousDays({ thresholdMinutes = 840, lookbackDays = 30, limit = 100 })`: Detects users approaching or saturating the 16-hour daily study cap (`DAILY_CAP_SATURATION`, `HIGH_VOLUME_SUSPICIOUS`), as well as users logging excessive manual hours (`EXCESSIVE_MANUAL_ENTRIES`).
+  - `auditSessionDiscrepancies({ lookbackDays = 7, toleranceMinutes = 1 })`: Audits mathematical consistency by comparing sum of session durations against `daily_totals.verified_minutes`.
+  - `runNightlyAntiCheatAudit(options)`: Aggregates flagged users, suspicious days, and discrepancies into an inspection report.
+- **Why:** Fulfills Person B's Phase 3 commitment for automated nightly audit queries to preserve leaderboard integrity.
+
+#### 3. Gate 2 Anti-Cheat Test Suite (`server/test/phase3-anticheat-gate2.test.js`)
+- **Change:** Created test suite containing 8 integration tests covering:
+  - Rate limiting behavior and 429 response formatting.
+  - Manual sessions anti-cheat: `verified: false`, 0 XP, unverified minutes excluded from leaderboard queries.
+  - Rejection of overlapping sessions with 409 `SESSION_OVERLAP`.
+  - Enforcement of 240 XP cap on 5-hour verified sessions.
+  - Enforcement of 16-hour daily cap on `daily_totals`.
+  - Detection of cap saturation and report generation via `findSuspiciousDays` and `runNightlyAntiCheatAudit`.
+- **Why:** Validates Gate 2 exit criteria ("study time is hard to fake").
+
+### C. Full Automated Test Suite Results
+
+All **16 test files** and **91 tests** pass cleanly:
+
+```text
+ ✓ test/auth.test.js (10 tests)
+ ✓ test/phase3-anticheat-gate2.test.js (8 tests)
+ ✓ test/exams.test.js (4 tests)
+ ✓ test/phase2-xp-bonuses.test.js (10 tests)
+ ✓ test/sessions.test.js (10 tests)
+ ✓ test/subjects.test.js (6 tests)
+ ✓ test/syllabus.test.js (9 tests)
+ ✓ test/phase1-integration.test.js (3 tests)
+ ✓ test/planner.test.js (3 tests)
+ ✓ test/stats.test.js (4 tests)
+ ✓ test/anti-cheat.test.js (6 tests)
+ ✓ test/me.test.js (7 tests)
+ ✓ test/progression.test.js (6 tests)
+ ✓ test/insights.test.js (2 tests)
+ ✓ test/export.test.js (2 tests)
+ ✓ test/migrations.test.js (1 test)
+
+Test Files  16 passed (16)
+     Tests  91 passed (91)
+  Duration  40.17s
+```
+
 
 
 
