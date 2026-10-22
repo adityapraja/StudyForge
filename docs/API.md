@@ -1,6 +1,6 @@
 # Study Habit Tracker — API Contract
 
-Version 1 · Oct 17, 2026 · @Adi
+Version 3 · Oct 23, 2026 · @Adi
 
 This file is the single agreement between frontend (Person A), backend core (Person B) and data modules (Person C). **Change an endpoint here first, then announce it to the team, then change the code.**
 
@@ -528,10 +528,13 @@ For `best_time`, the backend identifies the two consecutive start-hour buckets w
 | `PATCH /friends/requests/:id` | Accept or decline |
 | `GET /friends` | List friends with their visible stats |
 | `DELETE /friends/:id` | Remove a friend |
+| `GET /blocks` **(new)** | List users blocked by the signed-in user |
 | `POST /blocks` | Block a user |
 | `DELETE /blocks/:userId` **(new)** | Unblock |
 
 **`POST /friends/requests`**: `{ "username": "riya" }`. Returns the request. A user who blocked you, or whom you blocked, gets `NOT_FOUND`. Rate limited.
+
+An account cannot send a request to itself. Sending a second request while either direction is already pending returns `409 FRIEND_REQUEST_PENDING`; an accepted friendship returns `409 ALREADY_FRIENDS`. A declined request may be sent again. Blocking removes any pending request or accepted friendship in either direction.
 
 **`GET /friends/requests`**
 
@@ -554,15 +557,22 @@ For `best_time`, the backend identifies the two consecutive start-hour buckets w
       "username": "riya",
       "level": 7,
       "streak_current": 12,
-      "week_seconds": 36000
+      "week_seconds": 36000,
+      "subjects": [
+        { "subject_id": "s1", "name": "Physics", "color": "#4F8EF7", "seconds": 18000 }
+      ]
     }
   ]
 }
 ```
 
-`week_seconds` is `null` when that friend set weekly time to `nobody`. All fields pass through the single `canView` privacy check. There is no live "studying now" status.
+`week_seconds` is `null` when that friend set weekly time to `nobody`; `subjects` is `null` when subject visibility is `nobody`, otherwise it is the subject/time breakdown for the current week (possibly empty). All fields pass through the single `canView` privacy check. There is no live "studying now" status.
 
-**`POST /blocks`**: `{ "user_id": "u4" }`. Removes any friendship and hides both users from each other everywhere.
+`weekly_time: everyone` exposes the weekly total to a friend, `friends` exposes it only to friends, and `nobody` returns `null`. The `subjects` setting applies the same visibility rules to the subject/time breakdown.
+
+**`POST /blocks`**: `{ "user_id": "u4" }`. Returns `{ "ok": true }`, removes any friendship or pending request in either direction, and hides both users from each other everywhere. Blocking yourself is rejected. **`DELETE /blocks/:userId`** removes a block created by the signed-in user and returns `{ "ok": true }`; a block that does not exist returns `404 NOT_FOUND`.
+
+**`GET /blocks`** returns `{ "items": [{ "user_id": "u4", "username": "sam" }] }` for blocks created by the signed-in user. It does not reveal users who blocked the signed-in user.
 
 ## 12. Leaderboards
 
@@ -606,7 +616,7 @@ For `best_time`, the backend identifies the two consecutive start-hour buckets w
 | Syllabus | `GET /subjects/:id/syllabus`, `POST /topics`, `PATCH/DELETE /topics/:id`, `POST /subjects/:id/syllabus/import` |
 | Exams | `GET/POST /exams`, `PATCH/DELETE /exams/:id` |
 | Stats | `GET /stats/heatmap`, `/stats/progress`, `/stats/subjects`, `/stats/insights` |
-| Friends | `POST /friends/requests`, `GET /friends/requests`, `PATCH /friends/requests/:id`, `GET /friends`, `DELETE /friends/:id`, `POST /blocks`, `DELETE /blocks/:userId` |
+| Friends | `POST /friends/requests`, `GET /friends/requests`, `PATCH /friends/requests/:id`, `GET /friends`, `DELETE /friends/:id`, `GET/POST /blocks`, `DELETE /blocks/:userId` |
 | Leaderboards | `GET /leaderboards` |
 
 ## 14. Who builds what
@@ -629,3 +639,4 @@ For `best_time`, the backend identifies the two consecutive start-hour buckets w
 | --- | --- | --- |
 | 1 | Oct 17, 2026 | First version |
 | 2 | Oct 21, 2026 | Person C Phase 1 planner, statistics and CSV export behavior |
+| 3 | Oct 23, 2026 | Person A Phase 3 friends, privacy, block management and leaderboard integration; friends and leaderboard API behavior |

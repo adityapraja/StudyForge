@@ -14,6 +14,8 @@ import plannerRoutes from './modules/planner/planner.routes.js';
 import statsRoutes from './modules/stats/stats.routes.js';
 import syllabusRoutes from './modules/syllabus/syllabus.routes.js';
 import examsRoutes from './modules/exams/exams.routes.js';
+import friendsRoutes, { blocksRoutes } from './modules/friends/friends.routes.js';
+import leaderboardsRoutes from './modules/leaderboards/leaderboards.routes.js';
 
 export const createApp = () => {
   const app = express();
@@ -41,6 +43,9 @@ export const createApp = () => {
   // REST API Routes under /api
   app.use('/api/auth', authRoutes);
   app.use('/api/me', usersRoutes);
+  app.use('/api/friends', friendsRoutes);
+  app.use('/api/blocks', blocksRoutes);
+  app.use('/api/leaderboards', leaderboardsRoutes);
   app.use('/api', syllabusRoutes);
   app.use('/api/exams', examsRoutes);
   app.use('/api/subjects', subjectsRoutes);
