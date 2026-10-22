@@ -222,3 +222,84 @@ All tests run cleanly via `npm test` from both `server/` and repository root.
 3. **Verification:**
    - Both CI environment (where `DATABASE_URL` is supplied) and local development (where fallback embedded cluster is used) run seamlessly and pass all 45 test cases.
 
+---
+
+## 5. Phase 1 Cross-Team Integration & Gate 1 Verification
+
+**Date:** Oct 22, 2026  
+**Context:** Pulled and integrated all Phase 1 commits across all three team members:
+- **Person A (Frontend):** Commit `902d947 frontend phase 1`
+- **Person B (Backend Core & Auth):** Commits `99a0ce8 Backend B - Phase 1 Auth,middleware` & `aebab7f GIT CI issue fixed`
+- **Person C (Database & Data Modules):** Commit `6669a1d DB phase 1 implemented`
+
+---
+
+### A. Team Ownership Alignment & Integration Analysis
+
+| Member | Owned Scope in Phase 1 | Status & Integration Verification |
+| :--- | :--- | :--- |
+| **Person A** | React 19 single-page UI, tabs (Dashboard, Timer, Planner, Subjects, Statistics, Settings), API request helper, auth token cookie handling, active timer recovery display. | **Verified & Integrated.** Client UI maps to all `/api/*` endpoints; state normalizers safely ingest backend response shapes. |
+| **Person B** | Express 5 setup, config, error handling, auth (register, login, logout, JWT cookies), subjects CRUD, timer lifecycle (start, pause, break, resume, stop, active recovery, manual entry), atomic session-end transaction, anti-cheat limits, streak management, XP curve. | **Verified & Integrated.** Core engine coordinates session completion with anti-cheat caps and updates both overall `daily_totals` and per-subject totals. |
+| **Person C** | Schema expansion (`subject_daily_totals`, `planner_days`, `planner_goals`, `tasks`), migrations runner (`server/migrations/001_planner_phase1.sql`), Planner endpoints (`GET/PUT /planner/:date`, `POST /planner/:date/carry-over`), Stats endpoints (`heatmap`, `progress`, `subjects`), CSV export (`GET /me/export.csv`). | **Verified & Integrated.** Seamlessly plugged into `app.js` and `users.routes.js`. `session-end.transaction.js` updates `subject_daily_totals` on session stop and manual entry. |
+
+---
+
+### B. Integration Fixes & Enhancements Made
+
+#### 1. Vite Development Proxy (`client/vite.config.js`)
+- **Change:** Configured Vite dev server proxy for `/api` targeting `http://localhost:3000` with `changeOrigin: true`.
+- **Why:** During development, the frontend runs on port 5173 while Express runs on port 3000. Without a proxy in Vite, API fetch calls from the React client to `/api/...` resulted in 404s from Vite dev server. The proxy enables seamless local communication with cookie pass-through without CORS issues.
+
+#### 2. Client Action Handlers (`client/src/App.jsx`)
+- **Change:**
+  - Added `handleCarryOver`: Calls `POST /api/planner/${planner.date}/carry-over` and alerts the number of carried tasks.
+  - Added `handleProfileSave`: Calls `PATCH /api/me` with updated username, time_zone, category, privacy, and streak_minimum_minutes.
+  - Added `handleSubjectDelete`: Calls `DELETE /api/subjects/${id}` and updates local state.
+  - Connected the handlers to their respective buttons ("Carry over", "Save profile", "Delete").
+- **Why:** Person A had wired the UI forms but left placeholder alerts for these actions. Connecting them ensures complete end-to-end user workflows for Phase 1.
+
+#### 3. Root Developer Experience (`package.json`)
+- **Change:** Added `"client:dev": "npm --prefix client run dev"` and `"client:build": "npm --prefix client run build"`.
+- **Why:** Allows developers to run frontend commands directly from the monorepo root.
+
+---
+
+### C. Gate 1 Exit Check & Integration Test Suite (`server/test/phase1-integration.test.js`)
+
+Created dedicated end-to-end integration test suite verifying **Gate 1: study time is accurate**:
+1. **Accurate Study Time & Pause/Break Exclusion:**
+   - Simulated a 65-minute elapsed session with a 10-minute pause and a 5-minute break.
+   - Verified study time calculated is exactly 50 minutes (3000s) with 0 non-study leakage.
+   - Verified session summary and database records match to the minute.
+2. **Timer Recovery on Refresh:**
+   - Verified `GET /api/sessions/active` returns the running session with timestamps and accumulated paused/break times on page reload.
+   - Verified that after session stop, `GET /api/sessions/active` cleanly returns `{ session: null }`.
+3. **Midnight Boundary Splitting in User Timezone:**
+   - Simulated session spanning midnight in `Asia/Kolkata` (UTC+5:30).
+   - Verified segments split across local calendar days accurately in both `daily_totals` and `subject_daily_totals`.
+4. **Cross-Module Flows (Planner + Stats + CSV Export):**
+   - Verified Planner review calculations (`review.goals_met`, `review.goals_total`, `review.tasks_done`, `review.total_seconds`) match subject-specific daily totals and overall daily totals.
+   - Verified Task carry-over copies unfinished tasks marked `carried_over: true` and is idempotent against duplicates.
+   - Verified Heatmap, Weekly Progress, and Subject Breakdown stats accurately calculate totals and percentages.
+   - Verified CSV export formats valid CSV headers (`"date","subject","start","end","duration_minutes","note"`) with accurate user isolation.
+
+---
+
+### D. Automated Test Verification Summary
+
+| Test File | Module Under Test | Status |
+| :--- | :--- | :--- |
+| `test/auth.test.js` | Register, login, password hashing, cookies, rate limit | **10 / 10 Passed** |
+| `test/sessions.test.js` | Timer start, recovery, state machine, search, delete | **10 / 10 Passed** |
+| `test/anti-cheat.test.js` | 16h daily cap, 4h XP cap, manual session anti-cheat, overlap | **6 / 6 Passed** |
+| `test/progression.test.js` | XP curve, streaks, weekly freezes | **6 / 6 Passed** |
+| `test/subjects.test.js` | Subject CRUD, hex colors, user isolation | **6 / 6 Passed** |
+| `test/me.test.js` | Profile retrieval, patch, goals, streak queries | **7 / 7 Passed** |
+| `test/planner.test.js` | Plan replacement, goal limits, subject validation, carry-over | **3 / 3 Passed** |
+| `test/stats.test.js` | Heatmap, weekly/monthly progress, subject breakdown | **4 / 4 Passed** |
+| `test/export.test.js` | CSV session export and user isolation | **2 / 2 Passed** |
+| `test/migrations.test.js` | Schema migrations runner idempotency | **1 / 1 Passed** |
+| `test/phase1-integration.test.js` | Gate 1 accuracy, timer recovery, planner/stats cross-integration | **3 / 3 Passed** |
+| **Total** | **Full Phase 1 Integration Test Suite** | **58 / 58 Passed (100%)** |
+
+

@@ -369,6 +369,46 @@ function App() {
     }
   };
 
+  const handleCarryOver = async () => {
+    try {
+      const result = await request(`/api/planner/${planner.date}/carry-over`, {
+        method: 'POST',
+      });
+      alert(`Carried over ${result.carried} task(s) to the next day.`);
+    } catch (error) {
+      alert(error.message);
+    }
+  };
+
+  const handleSubjectDelete = async (id) => {
+    try {
+      await request(`/api/subjects/${id}`, { method: 'DELETE' });
+      setSubjects((current) => current.filter((s) => s.id !== id));
+    } catch (error) {
+      alert(error.message);
+    }
+  };
+
+  const handleProfileSave = async () => {
+    try {
+      const payload = {
+        username: user.username,
+        time_zone: user.time_zone,
+        category: user.category,
+        privacy: user.privacy,
+        streak_minimum_minutes: user.streak_minimum_minutes,
+      };
+      const updated = await request('/api/me', {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      });
+      setUser((current) => ({ ...current, ...updated }));
+      alert('Profile updated successfully.');
+    } catch (error) {
+      alert(error.message);
+    }
+  };
+
   const renderDashboard = () => (
     <section className="page-shell">
       <div className="section-heading">
@@ -451,7 +491,7 @@ function App() {
                 <div className="subject-name"><span className="swatch" style={{ background: subject.color }} />{subject.name}</div>
                 <div className="row-actions">
                   <button type="button" className="ghost-button">Edit</button>
-                  <button type="button" className="ghost-button danger">Delete</button>
+                  <button type="button" className="ghost-button danger" onClick={() => handleSubjectDelete(subject.id)}>Delete</button>
                 </div>
               </div>
             ))}
@@ -578,7 +618,7 @@ function App() {
         </div>
       </div>
       <div className="footer-actions top-gap">
-        <button type="button" className="ghost-button" onClick={() => alert('Carry-over action ready for API integration.')}>Carry over</button>
+        <button type="button" className="ghost-button" onClick={handleCarryOver}>Carry over</button>
         <button type="button" className="primary-button" onClick={handlePlannerSave}>Save plan</button>
       </div>
     </section>
@@ -664,7 +704,7 @@ function App() {
                 <option value="professional">Professional</option>
               </select>
             </label>
-            <button type="button" className="primary-button">Save profile</button>
+            <button type="button" className="primary-button" onClick={handleProfileSave}>Save profile</button>
           </form>
         </div>
 
