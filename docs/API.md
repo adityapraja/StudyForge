@@ -396,6 +396,8 @@ Tasks with an `id` are updated, tasks without one are created, tasks missing fro
 
 **`PATCH /topics/:id`**: any of `title`, `status`, `parent_id`, `position`. Marking a topic `done` for the first time awards **20 XP once**; setting it back and forth never awards it twice. The response is the topic plus `{ "xp_awarded": 20 }` when XP was given.
 
+Completion counts every topic, including parents, in `topics_total` and `topics_done`; parent and child statuses are independent. `completion_percent` is rounded to an integer, or `0` for an empty syllabus. The status update response includes `xp_awarded: 20` only when the first completion reward is actually awarded; it does not include updated XP or level values. The local progression helper and topic-level idempotency schema support are not currently available, so XP integration remains deferred.
+
 **`POST /subjects/:id/syllabus/import`**
 
 ```json
@@ -435,6 +437,8 @@ Indentation (two spaces or a tab) sets nesting. Order is kept. Returns `{ "creat
 ```
 
 `target_hours` is optional; when missing, `hours_needed_per_day` is `null`. `logged_hours` counts study time on that subject since the exam was added. Exams in the past are not returned.
+
+`days_left` is based on the user's local calendar date. `hours_needed_per_day` is rounded to one decimal place and is `null` when no target is set or the target has been met. An exam today uses one day as the divisor while target hours remain.
 
 ## 10. Statistics
 
@@ -510,6 +514,10 @@ Only days with study time are listed (at most 366 entries).
 ```
 
 Every item carries its `numbers`. The list can be empty when there is not enough data. No AI is used; these are fixed rules.
+
+`subject_behind` compares logged and planned seconds for the current local calendar week. `best_time` uses the last 30 local calendar days through today and reports `start_hour`, `end_hour`, and `share_percent`.
+
+For `best_time`, the backend identifies the two consecutive start-hour buckets with the highest combined study time; the percentage is their share of logged study time in that 30-day window.
 
 ## 11. Friends
 
