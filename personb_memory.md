@@ -302,4 +302,111 @@ Created dedicated end-to-end integration test suite verifying **Gate 1: study ti
 | `test/phase1-integration.test.js` | Gate 1 accuracy, timer recovery, planner/stats cross-integration | **3 / 3 Passed** |
 | **Total** | **Full Phase 1 Integration Test Suite** | **58 / 58 Passed (100%)** |
 
+---
+
+## 6. Phase 2 Execution — XP Awards, Bonus Rules & Weekly Goals
+
+**Role:** Person B — Backend Core, Authentication & Progression  
+**Phase:** Phase 2 (Progress)  
+**Date:** Oct 22, 2026  
+
+---
+
+### A. Phase 2 Objectives & Scope (Person B)
+
+As established in `docs/Study_Habit_Tracker_Project_Execution (1).md` and `docs/Study_Habit_Tracker_PRD_Simple.md`:
+1. **XP Awards & Levels Curve:**
+   - Level curve implementation: Level 1 requires 200 XP; each subsequent level requires $200 + (L-1) \times 50$ XP.
+   - Levels increase monotonically with verified study and bonus achievements.
+2. **Bonus XP Rules & Anti-Double-Award Constraints:**
+   - **50 XP Daily Goal Bonus**: Awarded when a user reaches or exceeds their daily target in verified study time. Awarded at most once per user per local calendar day.
+   - **20 XP Syllabus Topic Completion Bonus**: Exported hook `awardTopicCompletionXp(client, userId, topicId)` for Person C's syllabus module. Awarded at most once per user per topic (no double awards on retries or toggling done/undone).
+   - **Session XP Cap**: 1 XP per minute, capped at 4 hours (240 XP) per session. Manual sessions earn 0 XP and no bonus.
+3. **Weekly Goals & XP History Endpoints:**
+   - Enriched `GET /me/goals` and dedicated `GET /me/goals/weekly`: 7-day Monday–Sunday array with daily targets, daily seconds, `goal_met`, `days_goal_met`, `week_seconds`, `week_progress_percent`, and `weekly_goal_met`.
+   - `PUT /me/goals`: Supports both partial and full updates for `daily_target_seconds`, `weekly_target_seconds`, and `streak_minimum_minutes`.
+   - `GET /me/xp/events`: Cursor-paginated history of user XP events (`session`, `daily_goal`, `topic_done`).
+
+---
+
+### B. Database Schema & Migration Changes
+
+#### 1. `server/migrations/002_phase2_xp_bonuses.sql` & `server/schema.sql`
+- **Change:**
+  - Added `reference_id VARCHAR(255)` column to `xp_events` table for referencing syllabus topic IDs (and future external references).
+  - Added unique partial indexes to guarantee database-level idempotency against double awards:
+    - `idx_xp_events_session_kind`: `ON xp_events(session_id, kind) WHERE session_id IS NOT NULL`
+    - `idx_xp_events_daily_goal`: `ON xp_events(user_id, day) WHERE kind = 'daily_goal'`
+    - `idx_xp_events_topic_done`: `ON xp_events(user_id, reference_id) WHERE kind = 'topic_done'`
+- **Why:** Strict PRD requirement ("XP awarded once per session and per bonus; no double awards on retry"). Unique partial indexes guarantee that retrying a session stop or toggling a topic repeatedly can never double-award XP at the database layer.
+
+---
+
+### C. Backend Service & Route Implementations
+
+#### 1. Progression Service (`server/src/modules/progression/xp.service.js`)
+- **Constants:** `BONUS_XP_DAILY_GOAL = 50`, `BONUS_XP_TOPIC_DONE = 20`.
+- **`awardDailyGoalXp(client, userId, day)`:**
+  - Attempts insert into `xp_events` with `kind = 'daily_goal'`.
+  - On conflict, returns `{ awarded: false, xp: 0, reason: 'ALREADY_AWARDED' }`.
+  - When awarded, atomically updates user `xp`, checks for level-up, and returns `{ awarded: true, xp: 50, new_xp, new_level, level_up }`.
+- **`awardTopicCompletionXp(client, userId, topicId, day)`:**
+  - Exported hook for Person C's syllabus module.
+  - Attempts insert into `xp_events` with `kind = 'topic_done'`, `reference_id = topicId`.
+  - On conflict, returns `{ awarded: false, xp: 0, reason: 'ALREADY_AWARDED' }`.
+  - When awarded, increments user XP by 20, updates level, and returns `{ awarded: true, xp: 20, new_xp, new_level, level_up }`.
+- **`awardSessionXp(client, userId, sessionId, studySeconds, isVerified, day)`:**
+  - Encapsulates 1 XP/min (up to 240 XP) session award with `ON CONFLICT (session_id, kind) DO NOTHING`.
+- **`getUserXpEvents(userId, options)`:**
+  - Retrieves paginated XP event records with limit and cursor encoding `(created_at, id)`.
+
+#### 2. Atomic Session Stop Integration (`server/src/modules/sessions/session-end.transaction.js`)
+- **Change:**
+  - Integrated `awardSessionXp` and `awardDailyGoalXp` into the atomic session-end transaction.
+  - If the session is verified and today's total verified minutes meet or exceed `daily_target_seconds / 60`, automatically awards the 50 XP daily goal bonus (once per day).
+  - Summary includes `xp_awarded` (total), `session_xp`, `bonus_xp`, and `daily_goal_met`.
+
+#### 3. Users Module & Weekly Goals (`server/src/modules/users/`)
+- **`users.schemas.js`:**
+  - Made `daily_target_seconds`, `weekly_target_seconds`, and `streak_minimum_minutes` optional with a refinement requiring at least one field.
+  - Added `xpEventsQuerySchema` for limit and cursor validation.
+- **`users.service.js`:**
+  - Enriched `getUserGoalsWithProgress(user)` to generate a 7-day Monday–Sunday breakdown with daily targets and goal met status, `days_goal_met`, `week_seconds`, `week_progress_percent`, and `weekly_goal_met`.
+  - Added `getWeeklyGoalsBreakdown(user)` helper.
+  - Updated `updateUserGoals(userId, data)` to support partial updates dynamically.
+- **`users.routes.js`:**
+  - Added `GET /api/me/goals/weekly` endpoint.
+  - Added `GET /api/me/xp/events` endpoint with cursor pagination.
+
+---
+
+### D. Automated Test Verification (`server/test/phase2-xp-bonuses.test.js`)
+
+Created dedicated Phase 2 test suite covering all bonus rules, anti-double-award constraints, and weekly goals:
+1. **XP Curve & Levels:** Verified Level 1 (0-199 XP), Level 2 (200-449 XP), and Level 5 at 1240 XP ($200 + 250 + 300 + 350 + 140$).
+2. **Daily Goal Bonus (50 XP):**
+   - Verified 35-minute session on a 30-minute target awards $35 + 50 = 85$ XP with `bonus_xp: 50, daily_goal_met: true`.
+   - Verified second session on same day awards session XP but 0 bonus XP (no double award).
+   - Verified manual session does not award bonus XP.
+3. **Syllabus Topic Hook (20 XP):**
+   - Verified first completion awards 20 XP and triggers level-up across boundary.
+   - Verified toggling or retrying the same topic returns `ALREADY_AWARDED` with 0 XP added.
+4. **Weekly Goals Endpoints:**
+   - Verified `GET /api/me/goals` and `GET /api/me/goals/weekly` return 7-day Monday–Sunday array and progress metrics.
+   - Verified `PUT /api/me/goals` supports partial update (updating only `daily_target_seconds`).
+   - Verified `GET /api/me/xp/events` cursor-based pagination.
+
+---
+
+### E. Full Test Suite Summary
+
+All **12 test suites** and **67 tests** pass cleanly:
+
+```text
+Test Files  12 passed (12)
+     Tests  67 passed (67)
+  Duration  9.06s
+```
+
+
 

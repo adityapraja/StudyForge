@@ -123,7 +123,7 @@ describe('Anti-Cheat, Limits & Time Zone Boundaries', () => {
 
   describe('Session Caps & Limits', () => {
     it('caps XP at 4 hours (240 XP) even for longer sessions', async () => {
-      const { user, cookie } = await createTestUser();
+      const { user, cookie } = await createTestUser({ daily_target_seconds: 36000 });
       const subject = await createTestSubject(user.id);
 
       const startRes = await request(app)

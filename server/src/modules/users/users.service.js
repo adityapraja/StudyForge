@@ -73,44 +73,103 @@ export const getUserGoalsWithProgress = async (user) => {
   const startOfWeek = now.startOf('week').toISODate(); // Monday
   const endOfWeek = now.endOf('week').toISODate();     // Sunday
 
-  // Get today's total study seconds
-  const { rows: todayRows } = await query(
-    `SELECT minutes FROM daily_totals WHERE user_id = $1 AND day = $2`,
-    [user.id, today]
-  );
-  const todaySeconds = todayRows.length > 0 ? todayRows[0].minutes * 60 : 0;
-
-  // Get week's total study seconds
-  const { rows: weekRows } = await query(
-    `SELECT COALESCE(SUM(minutes), 0) AS week_minutes
+  // Get week's daily totals
+  const { rows: dailyRows } = await query(
+    `SELECT day::text, minutes
      FROM daily_totals
      WHERE user_id = $1 AND day >= $2 AND day <= $3`,
     [user.id, startOfWeek, endOfWeek]
   );
-  const weekSeconds = parseInt(weekRows[0].week_minutes, 10) * 60;
+  const minutesByDay = new Map(dailyRows.map((r) => [r.day, r.minutes]));
+
+  const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const weekStartDt = now.startOf('week');
+  const dailyTarget = user.daily_target_seconds ?? 14400;
+  const weeklyTarget = user.weekly_target_seconds ?? 72000;
+
+  let daysGoalMet = 0;
+  const days = [];
+
+  for (let i = 0; i < 7; i++) {
+    const currentDayDt = weekStartDt.plus({ days: i });
+    const dateStr = currentDayDt.toISODate();
+    const dayName = dayNames[i];
+    const mins = minutesByDay.get(dateStr) || 0;
+    const seconds = mins * 60;
+    const goalMet = seconds >= dailyTarget;
+
+    if (goalMet) {
+      daysGoalMet++;
+    }
+
+    days.push({
+      day: dayName,
+      date: dateStr,
+      seconds,
+      target_seconds: dailyTarget,
+      goal_met: goalMet,
+    });
+  }
+
+  const todayMins = minutesByDay.get(today) || 0;
+  const todaySeconds = todayMins * 60;
+  const weekSeconds = days.reduce((acc, d) => acc + d.seconds, 0);
+
+  const todayProgressPercent = dailyTarget > 0
+    ? Math.min(100, Math.round((todaySeconds / dailyTarget) * 100))
+    : 0;
+  const weekProgressPercent = weeklyTarget > 0
+    ? Math.min(100, Math.round((weekSeconds / weeklyTarget) * 100))
+    : 0;
 
   return {
-    daily_target_seconds: user.daily_target_seconds,
-    weekly_target_seconds: user.weekly_target_seconds,
+    daily_target_seconds: dailyTarget,
+    weekly_target_seconds: weeklyTarget,
     streak_minimum_minutes: user.streak_minimum_minutes,
     today_seconds: todaySeconds,
     week_seconds: weekSeconds,
+    today_progress_percent: todayProgressPercent,
+    daily_goal_met: todaySeconds >= dailyTarget,
+    days,
+    days_goal_met: daysGoalMet,
+    week_progress_percent: weekProgressPercent,
+    weekly_goal_met: weekSeconds >= weeklyTarget,
   };
 };
 
-export const updateUserGoals = async (
-  userId,
-  { daily_target_seconds, weekly_target_seconds, streak_minimum_minutes }
-) => {
+export const getWeeklyGoalsBreakdown = async (user) => {
+  return getUserGoalsWithProgress(user);
+};
+
+export const updateUserGoals = async (userId, data) => {
+  const updates = [];
+  const values = [];
+  let paramIndex = 1;
+
+  if (data.daily_target_seconds !== undefined) {
+    updates.push(`daily_target_seconds = $${paramIndex++}`);
+    values.push(data.daily_target_seconds);
+  }
+
+  if (data.weekly_target_seconds !== undefined) {
+    updates.push(`weekly_target_seconds = $${paramIndex++}`);
+    values.push(data.weekly_target_seconds);
+  }
+
+  if (data.streak_minimum_minutes !== undefined) {
+    updates.push(`streak_minimum_minutes = $${paramIndex++}`);
+    values.push(data.streak_minimum_minutes);
+  }
+
+  updates.push(`updated_at = NOW()`);
+  values.push(userId);
+
   const { rows } = await query(
     `UPDATE users
-     SET daily_target_seconds = $1,
-         weekly_target_seconds = $2,
-         streak_minimum_minutes = $3,
-         updated_at = NOW()
-     WHERE id = $4
+     SET ${updates.join(', ')}
+     WHERE id = $${paramIndex}
      RETURNING daily_target_seconds, weekly_target_seconds, streak_minimum_minutes`,
-    [daily_target_seconds, weekly_target_seconds, streak_minimum_minutes, userId]
+    values
   );
 
   return {
