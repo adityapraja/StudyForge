@@ -267,6 +267,21 @@ textarea { resize: vertical; }
 .insight-number dt { color: var(--muted); text-transform: capitalize; }
 .insight-number dd { margin: 0; font-family: var(--font-mono); }
 
+.friend-request-form { display: flex; flex-direction: column; gap: 16px; }
+.friend-request-form h2 { margin: 0; }
+.friend-request-form label { display: flex; flex-direction: column; gap: 8px; color: var(--muted); }
+.social-row, .friend-row { align-items: center; }
+.social-row .row-actions, .friend-row .row-actions { flex-wrap: wrap; justify-content: flex-end; }
+.friend-row > div:first-child { min-width: 0; }
+.friend-row p, .leaderboard-row p { margin: 4px 0 0; color: var(--muted); }
+.social-note { max-width: 66ch; color: var(--muted); }
+.leaderboard-controls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.leaderboard-controls label { display: flex; flex-direction: column; gap: 8px; color: var(--muted); }
+.leaderboard-personal-rank { padding: 12px 0; border-block: 1px solid var(--hairline); font-weight: 600; }
+.leaderboard-list { margin: 0; padding: 0; list-style: none; }
+.leaderboard-row { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; align-items: center; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--hairline); }
+.leaderboard-rank { font-family: var(--font-mono); color: var(--muted); }
+
 .error-message { padding: 12px 0; border-block: 1px solid var(--ink); color: var(--ink); }
 .success-message { padding: 12px 0; border-block: 1px solid var(--hairline); color: var(--muted); }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); }
@@ -308,6 +323,10 @@ textarea { resize: vertical; }
   .goal-row { flex-wrap: wrap; }
   .goal-row input { min-width: 38%; }
   .syllabus-topic-row { grid-template-columns: 1fr; }
+  .leaderboard-controls { grid-template-columns: 1fr; }
+  .social-row, .friend-row { align-items: flex-start; flex-direction: column; }
+  .social-row .row-actions, .friend-row .row-actions { justify-content: flex-start; }
+  .leaderboard-row { grid-template-columns: 32px minmax(0, 1fr) auto; gap: 10px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
