@@ -18,9 +18,34 @@ export const patchMeSchema = z.object({
     .optional(),
 });
 
-export const updateGoalsSchema = z.object({
-  daily_target_seconds: z.number().int().min(0, 'Daily target seconds must be non-negative'),
-  weekly_target_seconds: z.number().int().min(0, 'Weekly target seconds must be non-negative'),
-  streak_minimum_minutes: z.number().int().min(1, 'Streak minimum minutes must be at least 1'),
+export const updateGoalsSchema = z
+  .object({
+    daily_target_seconds: z
+      .number()
+      .int()
+      .min(0, 'Daily target seconds must be non-negative')
+      .optional(),
+    weekly_target_seconds: z
+      .number()
+      .int()
+      .min(0, 'Weekly target seconds must be non-negative')
+      .optional(),
+    streak_minimum_minutes: z
+      .number()
+      .int()
+      .min(1, 'Streak minimum minutes must be at least 1')
+      .optional(),
+  })
+  .refine(
+    (data) =>
+      data.daily_target_seconds !== undefined ||
+      data.weekly_target_seconds !== undefined ||
+      data.streak_minimum_minutes !== undefined,
+    { message: 'At least one goal target or streak minimum must be provided' }
+  );
+
+export const xpEventsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).optional().default(50),
+  cursor: z.string().optional(),
 });
 

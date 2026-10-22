@@ -2,12 +2,13 @@ import { Router } from 'express';
 import { authenticate } from '../../middleware/auth.js';
 import { validate } from '../../middleware/validate.js';
 import { formatUser } from '../auth/auth.service.js';
-import { getXpBreakdown } from '../progression/xp.service.js';
+import { getXpBreakdown, getUserXpEvents } from '../progression/xp.service.js';
 import { getStreakInfo } from '../progression/streak.service.js';
-import { patchMeSchema, updateGoalsSchema } from './users.schemas.js';
+import { patchMeSchema, updateGoalsSchema, xpEventsQuerySchema } from './users.schemas.js';
 import {
   updateUserProfile,
   getUserGoalsWithProgress,
+  getWeeklyGoalsBreakdown,
   updateUserGoals,
 } from './users.service.js';
 import { exportSessionsCsv } from '../export/export.service.js';
@@ -35,6 +36,15 @@ router.get('/xp', (req, res) => {
   res.status(200).json(xpData);
 });
 
+router.get('/xp/events', validate({ query: xpEventsQuerySchema }), async (req, res, next) => {
+  try {
+    const events = await getUserXpEvents(req.user.id, req.query);
+    res.status(200).json(events);
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get('/streak', async (req, res, next) => {
   try {
     const streakData = await getStreakInfo(
@@ -52,6 +62,15 @@ router.get('/goals', async (req, res, next) => {
   try {
     const goalsData = await getUserGoalsWithProgress(req.user);
     res.status(200).json(goalsData);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/goals/weekly', async (req, res, next) => {
+  try {
+    const weeklyData = await getWeeklyGoalsBreakdown(req.user);
+    res.status(200).json(weeklyData);
   } catch (error) {
     next(error);
   }

@@ -1,6 +1,11 @@
 import { DateTime } from 'luxon';
 import { config } from '../../config.js';
-import { calculateSessionXp, getXpBreakdown } from '../progression/xp.service.js';
+import {
+  calculateSessionXp,
+  getXpBreakdown,
+  awardSessionXp,
+  awardDailyGoalXp,
+} from '../progression/xp.service.js';
 import { updateStreakOnSessionEnd } from '../progression/streak.service.js';
 
 /**
@@ -178,39 +183,42 @@ export const executeSessionEndTransaction = async (client, user, session, option
     );
   }
 
-  // Award XP (only for verified sessions, capped at 4 hours)
-  let xpAwarded = 0;
+  // Phase 2: Award XP (only for verified sessions, capped at 4 hours)
+  let sessionXp = 0;
+  let bonusXp = 0;
+  let dailyGoalMet = false;
+
   if (endedSession.verified) {
-    xpAwarded = calculateSessionXp(studySeconds, true);
+    const endDay = DateTime.fromJSDate(effectiveEndedAt, { zone }).toISODate();
+    const sessionXpResult = await awardSessionXp(
+      client,
+      user.id,
+      endedSession.id,
+      studySeconds,
+      true,
+      endDay
+    );
+    sessionXp = sessionXpResult.xp || 0;
 
-    if (xpAwarded > 0) {
-      const endDay = DateTime.fromJSDate(effectiveEndedAt, { zone }).toISODate();
+    // Check if daily target has been reached today in verified minutes
+    const today = DateTime.fromJSDate(effectiveEndedAt, { zone }).toISODate();
+    const { rows: todayTotals } = await client.query(
+      `SELECT verified_minutes FROM daily_totals WHERE user_id = $1 AND day = $2`,
+      [user.id, today]
+    );
+    const todayVerifiedMins = todayTotals[0]?.verified_minutes || 0;
+    const targetMins = Math.floor((user.daily_target_seconds || 14400) / 60);
 
-      // Prevent double XP awards for same session
-      const { rows: xpEventRows } = await client.query(
-        `INSERT INTO xp_events (user_id, session_id, kind, amount, day)
-         VALUES ($1, $2, 'session', $3, $4)
-         ON CONFLICT (session_id, kind) DO NOTHING
-         RETURNING id`,
-        [user.id, endedSession.id, xpAwarded, endDay]
-      );
-
-      // Only add to user's total if this xp_event was newly inserted
-      if (xpEventRows.length > 0) {
-        const { rows: userRows } = await client.query(
-          `SELECT xp FROM users WHERE id = $1 FOR UPDATE`,
-          [user.id]
-        );
-        const newTotalXp = (userRows[0]?.xp || 0) + xpAwarded;
-        const { level: newLevel } = getXpBreakdown(newTotalXp);
-
-        await client.query(
-          `UPDATE users SET xp = $1, level = $2, updated_at = NOW() WHERE id = $3`,
-          [newTotalXp, newLevel, user.id]
-        );
+    if (todayVerifiedMins >= targetMins) {
+      const dailyBonusResult = await awardDailyGoalXp(client, user.id, today);
+      if (dailyBonusResult.awarded) {
+        bonusXp = dailyBonusResult.xp;
+        dailyGoalMet = true;
       }
     }
   }
+
+  const totalXpAwarded = sessionXp + bonusXp;
 
   // Update streak
   const streak = await updateStreakOnSessionEnd(
@@ -235,7 +243,10 @@ export const executeSessionEndTransaction = async (client, user, session, option
       study_seconds: studySeconds,
       counted_seconds: totalCountedSeconds,
       verified: endedSession.verified,
-      xp_awarded: xpAwarded,
+      xp_awarded: totalXpAwarded,
+      session_xp: sessionXp,
+      bonus_xp: bonusXp,
+      daily_goal_met: dailyGoalMet,
       streak: {
         current: streak.current,
         longest: streak.longest,

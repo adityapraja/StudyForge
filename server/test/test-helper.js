@@ -65,10 +65,12 @@ export const createTestUser = async (overrides = {}) => {
   const time_zone = overrides.time_zone || 'UTC';
   const category = overrides.category || 'college';
   const password_hash = await bcrypt.hash(password, 4);
+  const dailyTarget = overrides.daily_target_seconds ?? 14400;
+  const weeklyTarget = overrides.weekly_target_seconds ?? 72000;
 
   const { rows } = await pool.query(
-    `INSERT INTO users (email, password_hash, username, time_zone, category, streak_minimum_minutes)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO users (email, password_hash, username, time_zone, category, streak_minimum_minutes, daily_target_seconds, weekly_target_seconds)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING id, email, username, time_zone, category, leaderboard_hidden, privacy, xp, level, streak_minimum_minutes, daily_target_seconds, weekly_target_seconds`,
     [
       email,
@@ -77,6 +79,8 @@ export const createTestUser = async (overrides = {}) => {
       time_zone,
       category,
       overrides.streak_minimum_minutes || 15,
+      dailyTarget,
+      weeklyTarget,
     ]
   );
 

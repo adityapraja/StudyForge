@@ -113,14 +113,22 @@ CREATE TABLE IF NOT EXISTS xp_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   session_id UUID REFERENCES sessions(id) ON DELETE CASCADE,
+  reference_id VARCHAR(255),
   kind VARCHAR(50) NOT NULL,
   amount INTEGER NOT NULL CHECK (amount >= 0),
   day DATE NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (session_id, kind)
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+ALTER TABLE xp_events ADD COLUMN IF NOT EXISTS reference_id VARCHAR(255);
+
 CREATE INDEX IF NOT EXISTS idx_xp_events_user ON xp_events(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_xp_events_session_kind
+  ON xp_events(session_id, kind) WHERE session_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_xp_events_daily_goal
+  ON xp_events(user_id, day) WHERE kind = 'daily_goal';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_xp_events_topic_done
+  ON xp_events(user_id, reference_id) WHERE kind = 'topic_done';
 
 -- 7. Planner Days and Goals
 CREATE TABLE IF NOT EXISTS planner_days (
