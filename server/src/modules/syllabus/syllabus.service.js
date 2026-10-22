@@ -1,5 +1,6 @@
 import { query, withTransaction } from '../../db.js';
 import { AppError } from '../../middleware/error-handler.js';
+import { awardTopicCompletionXp } from '../progression/xp.service.js';
 
 const topicFields = 'id, subject_id, parent_id, title, status, position';
 
@@ -155,6 +156,22 @@ export const updateTopic = async (userId, topicId, updates) =>
        RETURNING ${topicFields}`,
       values
     );
+
+    let xpAwarded = 0;
+    if (updates.status === 'done') {
+      const awardResult = await awardTopicCompletionXp(client, userId, topicId);
+      if (awardResult.awarded) {
+        xpAwarded = awardResult.xp;
+      }
+    }
+
+    if (xpAwarded > 0) {
+      return {
+        ...rows[0],
+        xp_awarded: xpAwarded,
+      };
+    }
+
     return rows[0];
   });
 

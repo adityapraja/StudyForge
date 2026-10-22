@@ -223,6 +223,51 @@ describe('Phase 2 — XP Awards, Bonus Rules & Weekly Goals', () => {
         client.release();
       }
     });
+
+    it('awards 20 XP via PATCH /api/topics/:id when topic marked done and avoids double award on toggle', async () => {
+      const { user, cookie } = await createTestUser();
+      const subject = await createTestSubject(user.id);
+
+      // Create topic
+      const createRes = await request(app)
+        .post('/api/topics')
+        .set('Cookie', [cookie])
+        .send({ subject_id: subject.id, title: 'Quantum Mechanics' });
+      expect(createRes.status).toBe(201);
+      const topicId = createRes.body.id;
+
+      // Mark topic done for the first time
+      const patch1 = await request(app)
+        .patch(`/api/topics/${topicId}`)
+        .set('Cookie', [cookie])
+        .send({ status: 'done' });
+      expect(patch1.status).toBe(200);
+      expect(patch1.body.xp_awarded).toBe(20);
+
+      // Verify user has 20 XP
+      const meRes = await request(app).get('/api/me/xp').set('Cookie', [cookie]);
+      expect(meRes.body.xp).toBe(20);
+
+      // Toggle topic to in_progress
+      const patch2 = await request(app)
+        .patch(`/api/topics/${topicId}`)
+        .set('Cookie', [cookie])
+        .send({ status: 'in_progress' });
+      expect(patch2.status).toBe(200);
+      expect(patch2.body.xp_awarded).toBeUndefined();
+
+      // Mark done again -> No double XP
+      const patch3 = await request(app)
+        .patch(`/api/topics/${topicId}`)
+        .set('Cookie', [cookie])
+        .send({ status: 'done' });
+      expect(patch3.status).toBe(200);
+      expect(patch3.body.xp_awarded).toBeUndefined();
+
+      // User XP still 20
+      const meRes2 = await request(app).get('/api/me/xp').set('Cookie', [cookie]);
+      expect(meRes2.body.xp).toBe(20);
+    });
   });
 
   describe('Weekly Goals Endpoints & Progression Queries', () => {
