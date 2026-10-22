@@ -93,3 +93,89 @@ export const getSubjectStats = async (userId, timeZone, range) => {
     total_seconds: totalSeconds,
   };
 };
+
+export const getInsights = async (userId, timeZone) => {
+  const today = DateTime.now().setZone(timeZone).startOf('day');
+  const weekStart = today.startOf('week').toISODate();
+  const weekEnd = today.endOf('week').toISODate();
+  const { rows: behindSubjects } = await query(
+    `SELECT subject.id AS subject_id, subject.name,
+            COALESCE(logged.seconds, 0)::integer AS logged_seconds,
+            COALESCE(planned.seconds, 0)::integer AS planned_seconds
+     FROM subjects subject
+     LEFT JOIN (
+       SELECT subject_id, SUM(minutes) * 60 AS seconds
+       FROM subject_daily_totals
+       WHERE user_id = $1 AND day >= $2 AND day <= $3
+       GROUP BY subject_id
+     ) logged ON logged.subject_id = subject.id
+     LEFT JOIN (
+       SELECT subject_id, SUM(target_seconds) AS seconds
+       FROM planner_goals
+       WHERE user_id = $1 AND date >= $2 AND date <= $3 AND subject_id IS NOT NULL
+       GROUP BY subject_id
+     ) planned ON planned.subject_id = subject.id
+     WHERE subject.user_id = $1
+       AND COALESCE(planned.seconds, 0) > COALESCE(logged.seconds, 0)
+     ORDER BY subject.name, subject.id`,
+    [userId, weekStart, weekEnd]
+  );
+
+  const weekItems = behindSubjects.map((subject) => ({
+    kind: 'subject_behind',
+    text: `${subject.name} got less time than planned this week.`,
+    numbers: {
+      logged_seconds: subject.logged_seconds,
+      planned_seconds: subject.planned_seconds,
+    },
+  }));
+
+  const bestTimeStart = today.minus({ days: 29 });
+  const tomorrow = today.plus({ days: 1 });
+  const { rows: hourlyTotals } = await query(
+    `SELECT EXTRACT(HOUR FROM started_at AT TIME ZONE $2)::integer AS start_hour,
+            SUM(study_seconds)::integer AS seconds
+     FROM sessions
+     WHERE user_id = $1
+       AND ended_at IS NOT NULL
+       AND study_seconds > 0
+       AND started_at >= $3
+       AND started_at < $4
+     GROUP BY 1`,
+    [
+      userId,
+      timeZone,
+      bestTimeStart.toUTC().toISO(),
+      tomorrow.toUTC().toISO(),
+    ]
+  );
+  const hourlySeconds = Array(24).fill(0);
+  for (const row of hourlyTotals) hourlySeconds[row.start_hour] = row.seconds;
+  const totalSeconds = hourlySeconds.reduce((sum, seconds) => sum + seconds, 0);
+
+  let bestWindowStart = 0;
+  let bestWindowSeconds = 0;
+  for (let hour = 0; hour < 24; hour += 1) {
+    const windowSeconds = hourlySeconds[hour] + hourlySeconds[(hour + 1) % 24];
+    if (windowSeconds > bestWindowSeconds) {
+      bestWindowStart = hour;
+      bestWindowSeconds = windowSeconds;
+    }
+  }
+
+  const items = [...weekItems];
+  if (totalSeconds > 0) {
+    const endHour = (bestWindowStart + 2) % 24;
+    const formatHour = (hour) => `${hour % 12 || 12} ${hour < 12 ? 'am' : 'pm'}`;
+    items.push({
+      kind: 'best_time',
+      text: `You study most between ${formatHour(bestWindowStart)} and ${formatHour(endHour)}.`,
+      numbers: {
+        start_hour: bestWindowStart,
+        end_hour: endHour,
+        share_percent: Math.round((bestWindowSeconds * 100) / totalSeconds),
+      },
+    });
+  }
+  return { items };
+};

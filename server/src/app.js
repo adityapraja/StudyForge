@@ -12,6 +12,8 @@ import subjectsRoutes from './modules/subjects/subjects.routes.js';
 import sessionsRoutes from './modules/sessions/sessions.routes.js';
 import plannerRoutes from './modules/planner/planner.routes.js';
 import statsRoutes from './modules/stats/stats.routes.js';
+import syllabusRoutes from './modules/syllabus/syllabus.routes.js';
+import examsRoutes from './modules/exams/exams.routes.js';
 
 export const createApp = () => {
   const app = express();
@@ -39,6 +41,8 @@ export const createApp = () => {
   // REST API Routes under /api
   app.use('/api/auth', authRoutes);
   app.use('/api/me', usersRoutes);
+  app.use('/api', syllabusRoutes);
+  app.use('/api/exams', examsRoutes);
   app.use('/api/subjects', subjectsRoutes);
   app.use('/api/sessions', sessionsRoutes);
   app.use('/api/planner', plannerRoutes);
