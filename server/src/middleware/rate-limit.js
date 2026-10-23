@@ -16,13 +16,10 @@ const createRateLimiter = (max) => rateLimit({
   },
 });
 
-<<<<<<< HEAD
 export const authRateLimiter = createRateLimiter(6);
-export const friendRequestRateLimiter = createRateLimiter(6);
-=======
 export const friendRequestRateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: config.nodeEnv === 'test' ? 1000 : 15, // 15 requests per 15 minutes
+  windowMs: 15 * 60 * 1000,
+  max: config.nodeEnv === 'test' ? 1000 : 15,
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res) => {
@@ -34,6 +31,3 @@ export const friendRequestRateLimiter = rateLimit({
     });
   },
 });
-
-
->>>>>>> origin/main
