@@ -581,6 +581,62 @@ Test Files  16 passed (16)
 
 ---
 
+## 10. Phase 3 Architecture Clarifications for Person C & Fresh Bootstrap Verification
+
+**Date:** Oct 22, 2026  
+**Context:** Addressed Person C's alignment inquiries prior to Phase 3 Database & Social module implementation:
+
+1. **Suspicious-Session Criteria:**
+   - Proactive Hard Enforcement: Manual sessions (`verified: false`), overlapping sessions rejected (409 `SESSION_OVERLAP`), clock timestamps $\le \text{NOW()}$, 12h max session length cap, 4h (240 XP) XP cap, 16h daily study cap.
+   - Reactive Audit Flags (`audit.service.js`): `DAILY_CAP_SATURATION` ($\ge 960$ min), `HIGH_VOLUME_SUSPICIOUS` ($\ge 840$ min), `EXCESSIVE_MANUAL_ENTRIES` ($> 480$ min unverified), `UNREALISTIC_ENDURANCE` ($\ge 6$ hours with 0 pauses/breaks), and session-to-`daily_totals` data drift $> 1$ min tolerance.
+2. **Disqualification State in Database:**
+   - Session level: `sessions.verified = false`.
+   - Daily level: `daily_totals.verified_minutes` decremented or set to 0. Total `minutes` preserved for personal history.
+3. **Credit Revocation on Leaderboards:**
+   - Leaderboards are dynamic, on-demand SQL queries over `daily_totals.verified_minutes` (never a static cache table).
+   - Revoking a session atomically updates `sessions.verified = false` and deducts from `daily_totals.verified_minutes`.
+   - The very next `GET /leaderboards` request immediately reflects the updated verified totals and ranks with zero cache invalidation.
+4. **Fresh Database Bootstrap Verification:**
+   - Executed independent bootstrap verification on empty PostgreSQL database.
+   - Applied `schema.sql`, `001_planner_phase1.sql`, and `002_phase2_xp_bonuses.sql`.
+   - Confirmed all 15 tables (`blocks`, `daily_totals`, `exams`, `friendships`, `planner_days`, `planner_goals`, `schema_migrations`, `sessions`, `streaks`, `subject_daily_totals`, `subjects`, `syllabus_topics`, `tasks`, `users`, `xp_events`) and partial unique indexes are created successfully without errors.
+
+---
+
+## 11. Local Machine Setup Documentation (`SETUP.md`)
+
+**Date:** Oct 23, 2026  
+**Change:**
+- Added [`SETUP.md`](SETUP.md) providing a comprehensive, end-to-end local environment setup guide.
+- Detailed prerequisites (Node.js, npm, Docker/PostgreSQL), dual database options (Docker Compose on port 5434 vs Native PostgreSQL), environment variable explanations, automatic schema/migration bootstrap flow, test execution instructions, dual-terminal startup commands, feature-by-feature manual testing walkthrough, and troubleshooting guides for common port/auth issues.
+- **Why:** Delivers clear, reproducible setup instructions so teammates, graders, or external contributors can spin up and test the full application smoothly without manual guesswork.
+
+---
+
+## 12. Backend Architecture, APIs & Dataflow Documentation (`BACKEND_AND_DATAFLOW.md`)
+
+**Date:** Oct 23, 2026  
+**Change:**
+- Created [`BACKEND_AND_DATAFLOW.md`](BACKEND_AND_DATAFLOW.md), an exhaustive technical document detailing the system architecture, database schema, end-to-end dataflows, and API reference, strictly focusing on backend, data access, and database layers (excluding frontend).
+- **Core Sections:**
+  1. **System Architecture**: Express 5 layered pattern, middleware chain, server clock authority, UTC timezone storage with local calendar boundary splitting.
+  2. **Database Schema & ER Diagram**: Mermaid ER diagram, table dictionary, and partial index idempotency strategy (`idx_sessions_user_open`, `idx_xp_events_topic_done`, `idx_tasks_carry_over_once`).
+  3. **Dataflows**: Detailed sequence and flow diagrams for:
+     - Timer lifecycle and atomic session-end transaction (`withTransaction` and `FOR UPDATE` row locking).
+     - Manual session anti-cheat quarantine (`verified: false`, 0 XP, unverified minutes isolation).
+     - Daily planner and task carry-over pipeline.
+     - Syllabus topic completion with idempotent 20 XP bonus hook.
+     - Dynamic on-demand leaderboard SQL aggregation pipeline.
+     - Rule-based deterministic insights calculation.
+  4. **Complete REST API Reference**: Endpoint-by-endpoint tables across Auth, Me/Users, Subjects, Sessions, Planner, Syllabus, Exams, Stats, Insights, Friends, and Leaderboards with HTTP verbs, request/query parameters, response shapes, and error codes.
+  5. **Anti-Cheat Engine**: Tier 1 proactive runtime hard caps vs Tier 2 reactive nightly audit queries (`audit.service.js`).
+- **Why:** Serves as the authoritative architectural blueprint and explanation reference for team reviews, technical presentations, and cross-team backend/data integration.
+
+
+
+
+---
+
 ## 10. CI Check Constraint Fix in Phase 1 Integration Tests (`test/phase1-integration.test.js`)
 
 **Date:** Oct 23, 2026  
