@@ -1,9 +1,9 @@
 import rateLimit from 'express-rate-limit';
 import { config } from '../config.js';
 
-export const authRateLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: config.nodeEnv === 'test' ? 1000 : 6, // 6 attempts per minute in dev/prod
+const createRateLimiter = (max) => rateLimit({
+  windowMs: 60 * 1000,
+  max: config.nodeEnv === 'test' ? 1000 : max,
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res) => {
@@ -16,3 +16,5 @@ export const authRateLimiter = rateLimit({
   },
 });
 
+export const authRateLimiter = createRateLimiter(6);
+export const friendRequestRateLimiter = createRateLimiter(6);

@@ -82,6 +82,18 @@ describe('Me (User Profile & Progression) Module', () => {
       expect(res.status).toBe(409);
       expect(res.body.error.code).toBe('USERNAME_TAKEN');
     });
+
+    it('rejects invalid time-zone identifiers', async () => {
+      const { cookie } = await createTestUser();
+      const res = await request(app)
+        .patch('/api/me')
+        .set('Cookie', [cookie])
+        .send({ time_zone: 'Not/A_Real_Zone' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(res.body.error.fields.time_zone).toBeDefined();
+    });
   });
 
   describe('GET /api/me/xp', () => {
@@ -169,4 +181,3 @@ describe('Me (User Profile & Progression) Module', () => {
     });
   });
 });
-

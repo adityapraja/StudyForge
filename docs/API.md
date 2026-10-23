@@ -1,6 +1,6 @@
 # Study Habit Tracker — API Contract
 
-Version 1 · Oct 17, 2026 · @Adi
+Version 3 · Oct 22, 2026 · @Adi
 
 This file is the single agreement between frontend (Person A), backend core (Person B) and data modules (Person C). **Change an endpoint here first, then announce it to the team, then change the code.**
 
@@ -48,7 +48,7 @@ Every error uses one shape:
 | 401 | Not signed in or bad login | `UNAUTHENTICATED`, `INVALID_CREDENTIALS` |
 | 403 | Signed in but not allowed | `FORBIDDEN`, `BLOCKED` |
 | 404 | Not found (also used for other users' private data) | `NOT_FOUND` |
-| 409 | Conflict | `EMAIL_TAKEN`, `USERNAME_TAKEN`, `SESSION_ALREADY_OPEN`, `SESSION_OVERLAP`, `SUBJECT_NAME_TAKEN`, `GOAL_LIMIT_REACHED` |
+| 409 | Conflict | `EMAIL_TAKEN`, `USERNAME_TAKEN`, `SESSION_ALREADY_OPEN`, `SESSION_OVERLAP`, `SUBJECT_NAME_TAKEN`, `GOAL_LIMIT_REACHED`, `FRIEND_REQUEST_EXISTS`, `ALREADY_FRIENDS` |
 | 429 | Rate limited | `RATE_LIMITED` |
 | 500 | Server error | `INTERNAL` |
 
@@ -72,6 +72,7 @@ Every error uses one shape:
 ```
 
 `category` is one of `school`, `college`, `competitive_exams`, `professional`.
+`time_zone` must be a valid Luxon-recognized IANA zone; registration and profile updates reject invalid values.
 Privacy values are `everyone`, `friends` or `nobody`.
 
 **Subject**
@@ -531,7 +532,7 @@ For `best_time`, the backend identifies the two consecutive start-hour buckets w
 | `POST /blocks` | Block a user |
 | `DELETE /blocks/:userId` **(new)** | Unblock |
 
-**`POST /friends/requests`**: `{ "username": "riya" }`. Returns the request. A user who blocked you, or whom you blocked, gets `NOT_FOUND`. Rate limited.
+**`POST /friends/requests`**: `{ "username": "riya" }`. Returns `{ "id", "from": { "id", "username" }, "to": { "id", "username" } }`. Self-requests are invalid. Duplicate pending requests and existing friendships return `409`; a reciprocal request accepts the existing incoming request instead of creating a second friendship. A user who blocked you, or whom you blocked, gets `NOT_FOUND`. Limited to 6 requests per minute.
 
 **`GET /friends/requests`**
 
@@ -560,9 +561,13 @@ For `best_time`, the backend identifies the two consecutive start-hour buckets w
 }
 ```
 
-`week_seconds` is `null` when that friend set weekly time to `nobody`. All fields pass through the single `canView` privacy check. There is no live "studying now" status.
+`week_seconds` is `null` when that friend set weekly time to `nobody`; the shared `canView` authorization check controls whether that value is returned. There is no live "studying now" status.
 
 **`POST /blocks`**: `{ "user_id": "u4" }`. Removes any friendship and hides both users from each other everywhere.
+
+`DELETE /blocks/:userId` removes a block created by the signed-in user. Block and unblock requests return `{ "ok": true }`. Blocks apply in both directions to requests, friend lists, privacy checks and leaderboard visibility.
+
+Privacy values are `everyone`, `friends` and `nobody`; absent or unrecognized settings deny access. The `weekly_time` setting controls visibility of a friend's weekly seconds and leaderboard time. A friend's weekly seconds are `null` when that friend has chosen `nobody`. The `subjects` setting is available through the shared `canView` authorization service for subject-level disclosure. There is no arbitrary-user profile or statistics endpoint; `GET /me` and `GET /me/goals` remain self-only.
 
 ## 12. Leaderboards
 
@@ -590,8 +595,18 @@ For `best_time`, the backend identifies the two consecutive start-hour buckets w
 - `entries` is the top 50.
 - Only **verified** time counts; manual entries are excluded.
 - Users with `leaderboard_hidden: true` are not listed, and their own `me` is `null` on public boards.
-- Periods follow the **signed-in viewer's** time zone (day, Monday-to-Sunday week, calendar month).
-- Ties: the user who reached the score first ranks higher.
+- `weekly_time` privacy and blocks are applied before score rows are fetched; default privacy is `friends`.
+- Opting out hides the user's identity and score from all leaderboard scopes but does not affect their own private statistics.
+- Ranking scores use verified timer-session credits written by the session-end transaction, after maximum-session and per-user-local-day caps. Manual, unverified, uncredited, and unfinished sessions are excluded.
+- Periods are defined by the **signed-in viewer's** time zone (day, Monday-to-Sunday week, calendar month), with local calendar boundaries converted to UTC before filtering credit timestamps.
+- A session's capped verified contribution is attributed at the server-recorded time the session-end transaction writes its leaderboard credit. Period windows use those UTC instants against the viewer's local calendar boundaries; ties use the timestamp at which the user's final credited contribution in the period was recorded, then user ID.
+- Historical sessions are not backfilled with leaderboard credits because their post-cap per-session contribution and authoritative credit time cannot be recovered from daily aggregates.
+- Audit findings are review signals only; they do not automatically disqualify a session or user-day. The audit reports daily cap saturation (the configured daily cap, 16 hours by default), high volume (840 minutes by default), excessive unverified manual entries (more than 480 minutes), uninterrupted timer sessions of at least six hours with no recorded pauses or breaks, and session/daily-total drift beyond the one-minute tolerance.
+- The high-volume audit also reports consecutive high-volume date ranges, using a configurable 840-minute daily threshold and two consecutive user-local dates by default. Each continuous range produces one finding; gaps create separate ranges. These remain review signals and never cause automatic disqualification.
+- The drift audit converts each session into local-day segments with the same timezone and minute-allocation rules as session finalization, then compares per-user local dates with `daily_totals`. A stored timezone that cannot be interpreted is reported as an audit error rather than silently treated as UTC. Audit windows use each user's local date through today.
+- Confirmed disqualification is currently an internal service operation, not an HTTP endpoint or authorized review workflow. It requires reviewer and case-reference metadata, but the repository does not yet define how reviewer identity or authority is authenticated. Do not expose or invoke it from an untrusted caller until that workflow is specified.
+- Disqualification keeps personal session history and total study minutes. Session disqualification removes that session's verified totals and timestamped leaderboard credits and reverses only its recorded session XP. User-day disqualification removes that day's attributed verified totals and credits for included sessions and reverses only session XP events recorded for that same local day; independent daily-goal and topic-completion XP remain. Repeated disqualification is idempotent.
+- Per-day credit attribution is available only for sessions finalized after the attribution ledger was introduced. Historical sessions without ledger rows cannot be safely disqualified and are rejected by the service rather than assigned fabricated attribution or timestamps.
 - The ranking is calculated when requested, so it shows a finished session on the next call.
 
 ## 13. Endpoint summary
@@ -629,3 +644,4 @@ For `best_time`, the backend identifies the two consecutive start-hour buckets w
 | --- | --- | --- |
 | 1 | Oct 17, 2026 | First version |
 | 2 | Oct 21, 2026 | Person C Phase 1 planner, statistics and CSV export behavior |
+| 3 | Oct 22, 2026 | Person C Phase 3 social endpoints and timestamped, capped leaderboard credits |

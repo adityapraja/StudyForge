@@ -2,8 +2,13 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import request from 'supertest';
 import { DateTime } from 'luxon';
 import { createApp } from '../src/app.js';
+import { config } from '../src/config.js';
+import { withTransaction } from '../src/db.js';
 import { setupTestDb, teardownTestDb, cleanDb, createTestUser, createTestSubject, getTestPool } from './test-helper.js';
-import { splitSessionAcrossDays } from '../src/modules/sessions/session-end.transaction.js';
+import {
+  executeSessionEndTransaction,
+  splitSessionAcrossDays,
+} from '../src/modules/sessions/session-end.transaction.js';
 
 describe('Anti-Cheat, Limits & Time Zone Boundaries', () => {
   let app;
@@ -26,16 +31,20 @@ describe('Anti-Cheat, Limits & Time Zone Boundaries', () => {
       const { user, cookie } = await createTestUser();
       const subject = await createTestSubject(user.id);
 
-      const twoHoursAgo = new Date(Date.now() - 2 * 3600 * 1000).toISOString();
-      const oneHourAgo = new Date(Date.now() - 1 * 3600 * 1000).toISOString();
+      const sessionEnd = DateTime.now()
+        .setZone(user.time_zone)
+        .minus({ days: 1 })
+        .startOf('day')
+        .plus({ hours: 12 });
+      const sessionStart = sessionEnd.minus({ hours: 1 });
 
       const res = await request(app)
         .post('/api/sessions/manual')
         .set('Cookie', [cookie])
         .send({
           subject_id: subject.id,
-          started_at: twoHoursAgo,
-          ended_at: oneHourAgo,
+          started_at: sessionStart.toISO(),
+          ended_at: sessionEnd.toISO(),
           note: 'Forgot to start timer',
         });
 
@@ -51,12 +60,25 @@ describe('Anti-Cheat, Limits & Time Zone Boundaries', () => {
 
       // Verify daily_totals: minutes updated (for personal tracking), verified_minutes remains 0 (anti-cheat)
       const { rows: dtRows } = await pool.query(
-        'SELECT minutes, verified_minutes FROM daily_totals WHERE user_id = $1',
+        `SELECT COALESCE(SUM(minutes), 0)::integer AS minutes,
+                COALESCE(SUM(verified_minutes), 0)::integer AS verified_minutes
+         FROM daily_totals WHERE user_id = $1`,
         [user.id]
       );
-      expect(dtRows.length).toBe(1);
       expect(dtRows[0].minutes).toBe(60);
       expect(dtRows[0].verified_minutes).toBe(0);
+      const { rows: creditRows } = await pool.query(
+        `SELECT leaderboard_credited_seconds, leaderboard_credited_at
+         FROM sessions WHERE user_id = $1`,
+        [user.id]
+      );
+      expect(creditRows).toEqual([{ leaderboard_credited_seconds: 0, leaderboard_credited_at: null }]);
+
+      const leaderboard = await request(app)
+        .get('/api/leaderboards?period=day')
+        .set('Cookie', [cookie]);
+      expect(leaderboard.status).toBe(200);
+      expect(leaderboard.body.entries).toEqual([]);
     });
 
     it('rejects overlapping sessions with 409 SESSION_OVERLAP', async () => {
@@ -92,6 +114,40 @@ describe('Anti-Cheat, Limits & Time Zone Boundaries', () => {
 
       expect(res.status).toBe(409);
       expect(res.body.error.code).toBe('SESSION_OVERLAP');
+    });
+
+    it('rejects manual time overlapping an open timer and creates no leaderboard credit', async () => {
+      const { user, cookie } = await createTestUser();
+      const subject = await createTestSubject(user.id);
+      const started = await request(app)
+        .post('/api/sessions/start')
+        .set('Cookie', [cookie])
+        .send({ subject_id: subject.id });
+      expect(started.status).toBe(201);
+
+      const pool = getTestPool();
+      await pool.query(
+        `UPDATE sessions SET started_at = NOW() - INTERVAL '1 hour' WHERE id = $1`,
+        [started.body.id]
+      );
+      const overlap = await request(app)
+        .post('/api/sessions/manual')
+        .set('Cookie', [cookie])
+        .send({
+          subject_id: subject.id,
+          started_at: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+          ended_at: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+        });
+      expect(overlap.status).toBe(409);
+      expect(overlap.body.error.code).toBe('SESSION_OVERLAP');
+
+      const rows = await pool.query(
+        `SELECT COUNT(*)::integer AS count
+         FROM sessions
+         WHERE user_id = $1 AND leaderboard_credited_seconds > 0`,
+        [user.id]
+      );
+      expect(rows.rows[0].count).toBe(0);
     });
 
     it('rejects manual session where ended_at <= started_at or in the future', async () => {
@@ -153,18 +209,125 @@ describe('Anti-Cheat, Limits & Time Zone Boundaries', () => {
       expect(rows[0].xp).toBe(240);
     });
 
+    it('does not credit leaderboard time beyond the maximum session duration', async () => {
+      const { user, cookie } = await createTestUser();
+      const subject = await createTestSubject(user.id);
+      const pool = getTestPool();
+      const started = await request(app)
+        .post('/api/sessions/start')
+        .set('Cookie', [cookie])
+        .send({ subject_id: subject.id });
+      expect(started.status).toBe(201);
+
+      await pool.query(
+        `UPDATE sessions
+         SET started_at = NOW() - (($2::integer + 2) * INTERVAL '1 hour')
+         WHERE id = $1`,
+        [started.body.id, config.maxSessionHours]
+      );
+      const stopped = await request(app)
+        .post(`/api/sessions/${started.body.id}/stop`)
+        .set('Cookie', [cookie]);
+      expect(stopped.status).toBe(200);
+      expect(stopped.body.summary.study_seconds).toBe(config.maxSessionHours * 3600);
+
+      const { rows } = await pool.query(
+        `SELECT leaderboard_credited_seconds
+         FROM sessions WHERE id = $1`,
+        [started.body.id]
+      );
+      expect(rows[0].leaderboard_credited_seconds).toBeGreaterThan(0);
+      expect(rows[0].leaderboard_credited_seconds).toBeLessThanOrEqual(config.maxSessionHours * 3600);
+    });
+
+    it('rolls back finalization credits and accounting together, then credits only once on retry', async () => {
+      const { user, cookie } = await createTestUser();
+      const subject = await createTestSubject(user.id);
+      const pool = getTestPool();
+      const started = await request(app)
+        .post('/api/sessions/start')
+        .set('Cookie', [cookie])
+        .send({ subject_id: subject.id });
+      expect(started.status).toBe(201);
+      await pool.query(
+        `UPDATE sessions SET started_at = NOW() - INTERVAL '2 hours' WHERE id = $1`,
+        [started.body.id]
+      );
+
+      await expect(withTransaction(async (client) => {
+        const { rows } = await client.query(
+          `SELECT * FROM sessions
+           WHERE id = $1 AND user_id = $2 AND ended_at IS NULL
+           FOR UPDATE`,
+          [started.body.id, user.id]
+        );
+        await executeSessionEndTransaction(client, user, rows[0]);
+        throw new Error('simulate failure after session finalization');
+      })).rejects.toThrow('simulate failure after session finalization');
+
+      const { rows: rolledBackRows } = await pool.query(
+        `SELECT ended_at, leaderboard_credited_seconds, leaderboard_credited_at
+         FROM sessions WHERE id = $1`,
+        [started.body.id]
+      );
+      expect(rolledBackRows[0]).toMatchObject({
+        ended_at: null,
+        leaderboard_credited_seconds: 0,
+        leaderboard_credited_at: null,
+      });
+      const { rows: totalsAfterRollback } = await pool.query(
+        'SELECT COUNT(*)::integer AS count FROM daily_totals WHERE user_id = $1',
+        [user.id]
+      );
+      expect(totalsAfterRollback[0].count).toBe(0);
+      const { rows: xpAfterRollback } = await pool.query(
+        'SELECT xp FROM users WHERE id = $1',
+        [user.id]
+      );
+      expect(xpAfterRollback[0].xp).toBe(0);
+
+      const finalized = await request(app)
+        .post(`/api/sessions/${started.body.id}/stop`)
+        .set('Cookie', [cookie]);
+      expect(finalized.status).toBe(200);
+      const repeated = await request(app)
+        .post(`/api/sessions/${started.body.id}/stop`)
+        .set('Cookie', [cookie]);
+      expect(repeated.status).toBe(404);
+
+      const { rows: finalRows } = await pool.query(
+        `SELECT leaderboard_credited_seconds, leaderboard_credited_at
+         FROM sessions WHERE id = $1`,
+        [started.body.id]
+      );
+      expect(finalRows[0].leaderboard_credited_seconds).toBeGreaterThan(0);
+      expect(finalRows[0].leaderboard_credited_at).toBeInstanceOf(Date);
+      const { rows: xpEvents } = await pool.query(
+        `SELECT COUNT(*)::integer AS count
+         FROM xp_events WHERE user_id = $1 AND session_id = $2 AND kind = 'session'`,
+        [user.id, started.body.id]
+      );
+      expect(xpEvents[0].count).toBe(1);
+    });
+
     it('enforces 16-hour daily cap on counted study time in daily_totals', async () => {
       const { user, cookie } = await createTestUser();
       const subject = await createTestSubject(user.id);
 
       const pool = getTestPool();
-      const today = DateTime.now().setZone(user.time_zone).toISODate();
+      const sessionEnd = DateTime.now()
+        .setZone(user.time_zone)
+        .minus({ days: 1 })
+        .startOf('day')
+        .plus({ hours: 12 });
+      const sessionStart = sessionEnd.minus({ hours: 2 });
+      const sessionDay = sessionEnd.toISODate();
 
-      // Seed 15 hours (900 minutes) already logged today
+      // Seed 15 hours (900 minutes) before this same-day session.
       await pool.query(
         `INSERT INTO daily_totals (user_id, day, minutes, verified_minutes)
          VALUES ($1, $2, 900, 900)`,
-        [user.id, today]
+        [user.id, sessionDay]
       );
 
       const startRes = await request(app)
@@ -173,29 +336,53 @@ describe('Anti-Cheat, Limits & Time Zone Boundaries', () => {
         .send({ subject_id: subject.id });
       const sessionId = startRes.body.id;
 
-      // Simulate a 2-hour session (120 minutes)
+      // Finalize a deterministic two-hour session within one local day.
       await pool.query(
-        `UPDATE sessions SET started_at = NOW() - INTERVAL '2 hours' WHERE id = $1`,
-        [sessionId]
+        `UPDATE sessions
+         SET started_at = $2, segment_started_at = $2
+         WHERE id = $1`,
+        [sessionId, sessionStart.toJSDate()]
       );
 
-      const stopRes = await request(app)
-        .post(`/api/sessions/${sessionId}/stop`)
-        .set('Cookie', [cookie]);
+      const result = await withTransaction(async (client) => {
+        const { rows } = await client.query(
+          `SELECT * FROM sessions
+           WHERE id = $1 AND user_id = $2 AND ended_at IS NULL
+           FOR UPDATE`,
+          [sessionId, user.id]
+        );
+        return executeSessionEndTransaction(client, user, rows[0], {
+          endedAt: sessionEnd.toJSDate(),
+        });
+      });
 
-      expect(stopRes.status).toBe(200);
+      expect(result.summary.study_seconds).toBe(7200);
       // Study seconds = 7200 (2h)
-      expect(stopRes.body.summary.study_seconds).toBeGreaterThanOrEqual(7190);
       // But only 1 hour (3600 seconds = 60 minutes) could be counted before reaching the 16h cap!
-      expect(stopRes.body.summary.counted_seconds).toBe(3600);
+      expect(result.summary.counted_seconds).toBe(3600);
 
       // daily_totals should be capped at 960 minutes (16 hours)
       const { rows } = await pool.query(
         `SELECT minutes, verified_minutes FROM daily_totals WHERE user_id = $1 AND day = $2`,
-        [user.id, today]
+        [user.id, sessionDay]
       );
       expect(rows[0].minutes).toBe(960);
       expect(rows[0].verified_minutes).toBe(960);
+
+      const { rows: creditRows } = await pool.query(
+        `SELECT leaderboard_credited_seconds, leaderboard_credited_at
+         FROM sessions WHERE id = $1`,
+        [sessionId]
+      );
+      expect(creditRows[0].leaderboard_credited_seconds).toBe(3600);
+      expect(creditRows[0].leaderboard_credited_at).toBeInstanceOf(Date);
+
+      const leaderboard = await request(app)
+        .get('/api/leaderboards?period=day')
+        .set('Cookie', [cookie]);
+      expect(leaderboard.body.entries).toEqual([
+        expect.objectContaining({ user_id: user.id, seconds: 3600 }),
+      ]);
     });
   });
 
@@ -247,4 +434,3 @@ describe('Anti-Cheat, Limits & Time Zone Boundaries', () => {
     });
   });
 });
-
