@@ -168,7 +168,9 @@ describe('Phase 1 Integration & Gate 1 Exit Checks', () => {
 
     // Overwrite ended_at to exact endUtc to test exact segment calculation
     await pool.query(
-      `UPDATE sessions SET ended_at = $1, study_seconds = 2700 WHERE id = $2`,
+      `UPDATE sessions
+       SET ended_at = $1, study_seconds = 2700, leaderboard_credited_seconds = 2700
+       WHERE id = $2`,
       [endUtc, sessionId]
     );
 

@@ -579,6 +579,49 @@ Test Files  16 passed (16)
   Duration  40.17s
 ```
 
+---
+
+## 10. CI Check Constraint Fix in Phase 1 Integration Tests (`test/phase1-integration.test.js`)
+
+**Date:** Oct 23, 2026  
+**Issue Encountered in GitHub Actions CI:**
+- In GitHub Actions CI, `test/phase1-integration.test.js` failed with:
+  ```text
+  error: new row for relation "sessions" violates check constraint "sessions_leaderboard_credit_eligible"
+  UPDATE sessions SET ended_at = $1, study_seconds = 2700 WHERE id = $2
+  ```
+- **Root Cause:**
+  Pull Request #5 introduced migration `004_leaderboard_credits.sql` with a new check constraint:
+  ```sql
+  CONSTRAINT sessions_leaderboard_credit_eligible CHECK (
+    (leaderboard_credited_seconds = 0 AND leaderboard_credited_at IS NULL)
+    OR (
+      leaderboard_credited_seconds > 0
+      AND leaderboard_credited_at IS NOT NULL
+      AND source = 'timer'
+      AND verified = true
+      AND status = 'ended'
+      AND ended_at IS NOT NULL
+      AND study_seconds IS NOT NULL
+      AND leaderboard_credited_seconds <= study_seconds
+    )
+  )
+  ```
+  In `test/phase1-integration.test.js`, stopping the test session had credited 43,200 seconds (`leaderboard_credited_seconds = 43200`). The subsequent test step simulated a 45-minute span by updating `study_seconds = 2700` without updating `leaderboard_credited_seconds`. Because `43200 <= 2700` is false, PostgreSQL rejected the update.
+- **Resolution & Fix:**
+  Updated the test query in `server/test/phase1-integration.test.js` to set `leaderboard_credited_seconds = 2700` alongside `study_seconds = 2700`:
+  ```javascript
+  await pool.query(
+    `UPDATE sessions
+     SET ended_at = $1, study_seconds = 2700, leaderboard_credited_seconds = 2700
+     WHERE id = $2`,
+    [endUtc, sessionId]
+  );
+  ```
+- **Verification:**
+  Ran all 19 test files locally against the test database. All 19 test suites and 124 tests pass cleanly with a 100% pass rate.
+
+
 
 
 
