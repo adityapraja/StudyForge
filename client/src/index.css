@@ -89,6 +89,7 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 
 .brand-block { gap: 12px; }
 .brand-mark { font-family: var(--font-mono); font-size: 1.25rem; font-weight: 600; }
+.brand-logo { width: 28px; height: 28px; object-fit: contain; display: block; flex-shrink: 0; }
 .brand-block strong { font-size: 1rem; font-weight: 600; }
 .eyebrow {
   margin: 0 0 6px;
@@ -288,6 +289,8 @@ textarea { resize: vertical; }
 
 .auth-shell { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: var(--surface); }
 .auth-card { width: min(440px, 100%); border-block: 1px solid var(--section-line); }
+.auth-header { margin-bottom: 24px; }
+.auth-logo { width: 44px; height: 44px; object-fit: contain; display: block; margin-bottom: 16px; }
 .auth-header h1 { margin: 0; font-size: clamp(2.25rem, 4vw, 3.25rem); font-weight: 600; line-height: 1; letter-spacing: -0.04em; }
 .mode-toggle { margin: 24px 0 16px; }
 .mode-toggle button { flex: 1; }

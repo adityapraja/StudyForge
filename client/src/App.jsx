@@ -802,7 +802,7 @@ function App() {
       <header className="topbar">
         <div className="topbar-inner">
           <div className="brand-block">
-            <span className="brand-mark">S</span>
+            <img src="/studyforge.svg" alt="StudyForge Logo" className="brand-logo" width="28" height="28" />
             <div>
               <p className="eyebrow">Tracker</p>
               <strong>Study Forge</strong>
