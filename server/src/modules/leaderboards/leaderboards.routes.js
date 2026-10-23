@@ -1,17 +1,15 @@
 import { Router } from 'express';
 import { authenticate } from '../../middleware/auth.js';
 import { validate } from '../../middleware/validate.js';
-import { getLeaderboard } from '../friends/friends.service.js';
 import { leaderboardQuerySchema } from './leaderboards.schemas.js';
+import { getLeaderboard } from './leaderboards.service.js';
 
 const router = Router();
 router.use(authenticate);
 
 router.get('/', validate({ query: leaderboardQuerySchema }), async (req, res, next) => {
   try {
-    const { period, scope } = req.query;
-    const category = req.query.category || req.user.category;
-    res.status(200).json(await getLeaderboard(req.user, { period, category, scope }));
+    res.status(200).json(await getLeaderboard(req.user, req.query));
   } catch (error) {
     next(error);
   }

@@ -178,6 +178,10 @@ export const resumeSession = async (userId, sessionId) => {
 
 export const stopSession = async (user, sessionId, { note } = {}) => {
   return await withTransaction(async (client) => {
+    await client.query(
+      `SELECT id FROM users WHERE id = $1 FOR UPDATE`,
+      [user.id]
+    );
     const { rows } = await client.query(
       `SELECT * FROM sessions WHERE id = $1 AND user_id = $2 AND ended_at IS NULL FOR UPDATE`,
       [sessionId, user.id]
@@ -241,6 +245,10 @@ export const createManualSession = async (
   const studySeconds = Math.max(0, Math.floor((end.getTime() - start.getTime()) / 1000));
 
   return await withTransaction(async (client) => {
+    await client.query(
+      `SELECT id FROM users WHERE id = $1 FOR UPDATE`,
+      [user.id]
+    );
     const { rows } = await client.query(
       `INSERT INTO sessions (user_id, subject_id, started_at, ended_at, status, paused_seconds, break_seconds, segment_started_at, study_seconds, note, source, verified)
        VALUES ($1, $2, $3, $4, 'ended', 0, 0, $3, $5, $6, 'manual', false)
@@ -341,4 +349,3 @@ export const deleteSession = async (userId, sessionId) => {
 
   return { ok: true };
 };
-

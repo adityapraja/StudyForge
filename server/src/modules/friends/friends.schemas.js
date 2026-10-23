@@ -1,10 +1,14 @@
 import { z } from 'zod';
 
 export const createFriendRequestSchema = z.object({
-  username: z.string().min(3).max(20).regex(/^[a-zA-Z0-9_]+$/),
+  username: z.string().trim().min(3).max(20),
 });
 
-export const updateFriendRequestSchema = z.object({
+export const friendRequestParamsSchema = z.object({
+  id: z.uuid(),
+});
+
+export const respondFriendRequestSchema = z.object({
   action: z.enum(['accept', 'decline']),
 });
 
@@ -12,10 +16,6 @@ export const createBlockSchema = z.object({
   user_id: z.uuid(),
 });
 
-export const friendRequestParamsSchema = z.object({
-  id: z.uuid(),
-});
-
-export const userParamsSchema = z.object({
+export const userIdParamsSchema = z.object({
   userId: z.uuid(),
 });

@@ -100,11 +100,17 @@ describe('Phase 1 Integration & Gate 1 Exit Checks', () => {
     expect(stopRes.body.session.paused_seconds).toBe(600);
     expect(stopRes.body.session.break_seconds).toBe(300);
 
-    // Day total equals sum of sessions to the minute (~50 minutes)
+    // Session time may be split across local midnight; totals across its dates sum to 50 minutes.
     const today = DateTime.now().setZone('Asia/Kolkata').toISODate();
+    const sessionStartDay = DateTime.fromJSDate(sessionStart)
+      .setZone('Asia/Kolkata')
+      .toISODate();
     const dailyRes = await pool.query(
-      `SELECT minutes, verified_minutes FROM daily_totals WHERE user_id = $1 AND day = $2`,
-      [regRes.body.id, today]
+      `SELECT SUM(minutes)::integer AS minutes,
+              SUM(verified_minutes)::integer AS verified_minutes
+       FROM daily_totals
+       WHERE user_id = $1 AND day BETWEEN $2 AND $3`,
+      [regRes.body.id, sessionStartDay, today]
     );
     expect(dailyRes.rows.length).toBe(1);
     expect(dailyRes.rows[0].minutes).toBe(50);
@@ -112,8 +118,11 @@ describe('Phase 1 Integration & Gate 1 Exit Checks', () => {
 
     // Per-subject daily total updated for Subject A
     const subDailyRes = await pool.query(
-      `SELECT minutes, verified_minutes FROM subject_daily_totals WHERE user_id = $1 AND subject_id = $2 AND day = $3`,
-      [regRes.body.id, subjectA.id, today]
+      `SELECT SUM(minutes)::integer AS minutes,
+              SUM(verified_minutes)::integer AS verified_minutes
+       FROM subject_daily_totals
+       WHERE user_id = $1 AND subject_id = $2 AND day BETWEEN $3 AND $4`,
+      [regRes.body.id, subjectA.id, sessionStartDay, today]
     );
     expect(subDailyRes.rows.length).toBe(1);
     expect(subDailyRes.rows[0].minutes).toBe(50);
@@ -306,4 +315,3 @@ describe('Phase 1 Integration & Gate 1 Exit Checks', () => {
     expect(csvRes.text).toContain('45');
   });
 });
-

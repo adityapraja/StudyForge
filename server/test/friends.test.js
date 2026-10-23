@@ -1,17 +1,16 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
-import { DateTime } from 'luxon';
 import { createApp } from '../src/app.js';
+import { canView } from '../src/modules/privacy/can-view.service.js';
 import {
   cleanDb,
-  createTestSubject,
   createTestUser,
   getTestPool,
   setupTestDb,
   teardownTestDb,
 } from './test-helper.js';
 
-describe('Friends and leaderboards', () => {
+describe('Friends and privacy', () => {
   let app;
 
   beforeAll(async () => {
@@ -27,132 +26,274 @@ describe('Friends and leaderboards', () => {
     await cleanDb();
   });
 
-  it('sends, lists, accepts, and enforces weekly-time privacy on friend requests', async () => {
-    const alice = await createTestUser({ username: 'alice' });
-    const bob = await createTestUser({ username: 'bob' });
-    const aliceRequest = request(app).set('Cookie', alice.cookie);
-    const bobRequest = request(app).set('Cookie', bob.cookie);
+  it('requires authentication and supports request listing, acceptance, friend listing and removal', async () => {
+    const requester = await createTestUser({ username: 'requester' });
+    const receiver = await createTestUser({ username: 'receiver' });
+    expect((await request(app).get('/api/friends')).status).toBe(401);
 
-    const sent = await aliceRequest.post('/api/friends/requests').send({ username: 'BOB' });
+    const sent = await request(app)
+      .post('/api/friends/requests')
+      .set('Cookie', [requester.cookie])
+      .send({ username: receiver.user.username });
     expect(sent.status).toBe(201);
-    expect(sent.body).toMatchObject({ requester_id: alice.user.id, receiver_id: bob.user.id, status: 'pending' });
-    expect((await aliceRequest.get('/api/friends/requests')).body.outgoing).toHaveLength(1);
-    expect((await bobRequest.get('/api/friends/requests')).body.incoming[0].from.username).toBe('alice');
+    expect(sent.body).toMatchObject({
+      from: { id: requester.user.id, username: requester.user.username },
+      to: { id: receiver.user.id, username: receiver.user.username },
+    });
 
-    const accepted = await bobRequest
+    const lists = await request(app)
+      .get('/api/friends/requests')
+      .set('Cookie', [receiver.cookie]);
+    expect(lists.status).toBe(200);
+    expect(lists.body.incoming).toEqual([
+      { id: sent.body.id, from: { id: requester.user.id, username: requester.user.username } },
+    ]);
+    expect(lists.body.outgoing).toEqual([]);
+
+    const acceptedByWrongUser = await request(app)
       .patch(`/api/friends/requests/${sent.body.id}`)
+      .set('Cookie', [requester.cookie])
+      .send({ action: 'accept' });
+    expect(acceptedByWrongUser.status).toBe(404);
+
+    const accepted = await request(app)
+      .patch(`/api/friends/requests/${sent.body.id}`)
+      .set('Cookie', [receiver.cookie])
       .send({ action: 'accept' });
     expect(accepted.status).toBe(200);
-    expect(accepted.body.status).toBe('accepted');
+    expect(accepted.body).toEqual({ ok: true });
 
-    const pool = getTestPool();
-    await pool.query(
-      `INSERT INTO daily_totals (user_id, day, minutes, verified_minutes)
-       VALUES ($1, $2, 25, 25)`,
-      [bob.user.id, DateTime.now().setZone('UTC').toISODate()]
-    );
-    const bobSubject = await createTestSubject(bob.user.id, { name: 'Biology' });
-    await pool.query(
-      `INSERT INTO subject_daily_totals (user_id, subject_id, day, minutes, verified_minutes)
-       VALUES ($1, $2, $3, 10, 10)`,
-      [bob.user.id, bobSubject.id, DateTime.now().setZone('UTC').toISODate()]
-    );
-    expect((await aliceRequest.get('/api/friends')).body.items[0]).toMatchObject({
-      user_id: bob.user.id,
-      username: 'bob',
-      week_seconds: 1500,
+    const friends = await request(app).get('/api/friends').set('Cookie', [requester.cookie]);
+    expect(friends.status).toBe(200);
+    expect(friends.body.items).toHaveLength(1);
+    expect(friends.body.items[0]).toMatchObject({
+      user_id: receiver.user.id,
+      username: receiver.user.username,
+      week_seconds: 0,
     });
-    expect((await aliceRequest.get('/api/friends')).body.items[0].subjects).toEqual([
-      { subject_id: bobSubject.id, name: 'Biology', color: '#4F8EF7', seconds: 600 },
-    ]);
 
-    await pool.query(
-      `UPDATE users SET privacy = privacy || '{"weekly_time":"nobody","subjects":"nobody"}'::jsonb WHERE id = $1`,
-      [bob.user.id]
-    );
-    const hiddenStats = (await aliceRequest.get('/api/friends')).body.items[0];
-    expect(hiddenStats.week_seconds).toBeNull();
-    expect(hiddenStats.subjects).toBeNull();
-    expect((await aliceRequest.post('/api/friends/requests').send({ username: 'bob' })).status).toBe(409);
+    const removed = await request(app)
+      .delete(`/api/friends/${receiver.user.id}`)
+      .set('Cookie', [requester.cookie]);
+    expect(removed.status).toBe(200);
+    expect(removed.body).toEqual({ ok: true });
+    expect((await request(app).get('/api/friends').set('Cookie', [requester.cookie])).body.items).toEqual([]);
   });
 
-  it('does not expose blocked users and removes existing relationships when blocking', async () => {
-    const alice = await createTestUser({ username: 'alice' });
-    const bob = await createTestUser({ username: 'bob' });
+  it('rejects self and duplicate requests and resolves reciprocal requests into one friendship', async () => {
+    const first = await createTestUser({ username: 'first' });
+    const second = await createTestUser({ username: 'second' });
+
+    const self = await request(app)
+      .post('/api/friends/requests')
+      .set('Cookie', [first.cookie])
+      .send({ username: 'first' });
+    expect(self.status).toBe(400);
+
+    const sent = await request(app)
+      .post('/api/friends/requests')
+      .set('Cookie', [first.cookie])
+      .send({ username: 'second' });
+    const duplicate = await request(app)
+      .post('/api/friends/requests')
+      .set('Cookie', [first.cookie])
+      .send({ username: 'second' });
+    expect(sent.status).toBe(201);
+    expect(duplicate.status).toBe(409);
+
+    const reciprocal = await request(app)
+      .post('/api/friends/requests')
+      .set('Cookie', [second.cookie])
+      .send({ username: 'first' });
+    expect(reciprocal.status).toBe(201);
+    const { rows } = await getTestPool().query(
+      `SELECT id, status FROM friendships
+       WHERE (requester_id = $1 AND receiver_id = $2)
+          OR (requester_id = $2 AND receiver_id = $1)`,
+      [first.user.id, second.user.id]
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe('accepted');
+  });
+
+  it('declines and permits a fresh request, while validating request identifiers and actions', async () => {
+    const requester = await createTestUser({ username: 'decliner1' });
+    const receiver = await createTestUser({ username: 'decliner2' });
+    const sent = await request(app)
+      .post('/api/friends/requests')
+      .set('Cookie', [requester.cookie])
+      .send({ username: 'decliner2' });
+
+    const invalidId = await request(app)
+      .patch('/api/friends/requests/not-a-uuid')
+      .set('Cookie', [receiver.cookie])
+      .send({ action: 'decline' });
+    expect(invalidId.status).toBe(400);
+
+    const invalidAction = await request(app)
+      .patch(`/api/friends/requests/${sent.body.id}`)
+      .set('Cookie', [receiver.cookie])
+      .send({ action: 'reject' });
+    expect(invalidAction.status).toBe(400);
+
+    const declined = await request(app)
+      .patch(`/api/friends/requests/${sent.body.id}`)
+      .set('Cookie', [receiver.cookie])
+      .send({ action: 'decline' });
+    expect(declined.status).toBe(200);
+
+    const resent = await request(app)
+      .post('/api/friends/requests')
+      .set('Cookie', [requester.cookie])
+      .send({ username: 'decliner2' });
+    expect(resent.status).toBe(201);
+    expect(resent.body.id).toBe(sent.body.id);
+
+    await request(app)
+      .patch(`/api/friends/requests/${resent.body.id}`)
+      .set('Cookie', [receiver.cookie])
+      .send({ action: 'decline' });
+    const reciprocal = await request(app)
+      .post('/api/friends/requests')
+      .set('Cookie', [receiver.cookie])
+      .send({ username: 'decliner1' });
+    const acceptedReciprocal = await request(app)
+      .post('/api/friends/requests')
+      .set('Cookie', [requester.cookie])
+      .send({ username: 'decliner2' });
+    expect(reciprocal.status).toBe(201);
+    expect(acceptedReciprocal.status).toBe(201);
+    const { rows } = await getTestPool().query(
+      `SELECT status FROM friendships
+       WHERE (requester_id = $1 AND receiver_id = $2)
+          OR (requester_id = $2 AND receiver_id = $1)`,
+      [requester.user.id, receiver.user.id]
+    );
+    expect(rows).toEqual([{ status: 'accepted' }]);
+  });
+
+  it('enforces privacy levels and denies access when either side blocks the other', async () => {
+    const viewer = await createTestUser({ username: 'privacyviewer' });
+    const target = await createTestUser({ username: 'privacytarget' });
     const pool = getTestPool();
+
+    await pool.query(
+      `UPDATE users SET privacy = $1::jsonb WHERE id = $2`,
+      [JSON.stringify({ weekly_time: 'everyone', subjects: 'everyone' }), target.user.id]
+    );
+    expect(await canView(viewer.user.id, target.user.id, 'weekly_time')).toBe(true);
+    expect(await canView(viewer.user.id, target.user.id, 'subjects')).toBe(true);
+
+    await pool.query(
+      `UPDATE users SET privacy = $1::jsonb WHERE id = $2`,
+      [JSON.stringify({ weekly_time: 'friends', subjects: 'friends' }), target.user.id]
+    );
+    expect(await canView(viewer.user.id, target.user.id, 'weekly_time')).toBe(false);
     await pool.query(
       `INSERT INTO friendships (requester_id, receiver_id, status)
        VALUES ($1, $2, 'accepted')`,
-      [alice.user.id, bob.user.id]
+      [viewer.user.id, target.user.id]
     );
+    expect(await canView(viewer.user.id, target.user.id, 'weekly_time')).toBe(true);
+    expect(await canView(viewer.user.id, target.user.id, 'subjects')).toBe(true);
+
+    await pool.query(
+      `UPDATE users SET privacy = $1::jsonb WHERE id = $2`,
+      [JSON.stringify({ weekly_time: 'nobody', subjects: 'nobody' }), target.user.id]
+    );
+    expect(await canView(viewer.user.id, target.user.id, 'weekly_time')).toBe(false);
+    expect(await canView(viewer.user.id, target.user.id, 'subjects')).toBe(false);
+
+    await pool.query(
+      'UPDATE users SET privacy = $1::jsonb WHERE id = $2',
+      [JSON.stringify({ weekly_time: 'everyone', subjects: 'everyone' }), target.user.id]
+    );
+    await pool.query(
+      `INSERT INTO blocks (blocker_id, blocked_id) VALUES ($1, $2)`,
+      [target.user.id, viewer.user.id]
+    );
+    expect(await canView(viewer.user.id, target.user.id, 'weekly_time')).toBe(false);
+    expect(await canView(viewer.user.id, target.user.id, 'subjects')).toBe(false);
+    expect(await canView(viewer.user.id, '00000000-0000-0000-0000-000000000000', 'weekly_time')).toBe(false);
+  });
+
+  it('blocks both directions, removes friendship and requests, and supports unblock', async () => {
+    const first = await createTestUser({ username: 'blocker1' });
+    const second = await createTestUser({ username: 'blocker2' });
+    const sent = await request(app)
+      .post('/api/friends/requests')
+      .set('Cookie', [first.cookie])
+      .send({ username: 'blocker2' });
 
     const block = await request(app)
       .post('/api/blocks')
-      .set('Cookie', alice.cookie)
-      .send({ user_id: bob.user.id });
-    expect(block.status).toBe(201);
-    expect((await request(app).get('/api/friends').set('Cookie', alice.cookie)).body.items).toHaveLength(0);
-    expect((await request(app).get('/api/blocks').set('Cookie', alice.cookie)).body.items).toEqual([
-      { user_id: bob.user.id, username: 'bob' },
-    ]);
-    expect((await request(app)
+      .set('Cookie', [second.cookie])
+      .send({ user_id: first.user.id });
+    expect(block.status).toBe(200);
+    expect(block.body).toEqual({ ok: true });
+    expect((await request(app).get('/api/friends/requests').set('Cookie', [first.cookie])).body.incoming).toEqual([]);
+
+    const blockedRequest = await request(app)
       .post('/api/friends/requests')
-      .set('Cookie', bob.cookie)
-      .send({ username: 'alice' })).body.error.code).toBe('NOT_FOUND');
+      .set('Cookie', [first.cookie])
+      .send({ username: 'blocker2' });
+    expect(blockedRequest.status).toBe(404);
+    const unauthorizedUnblock = await request(app)
+      .delete(`/api/blocks/${first.user.id}`)
+      .set('Cookie', [first.cookie]);
+    expect(unauthorizedUnblock.status).toBe(404);
 
     const unblocked = await request(app)
-      .delete(`/api/blocks/${bob.user.id}`)
-      .set('Cookie', alice.cookie);
+      .delete(`/api/blocks/${first.user.id}`)
+      .set('Cookie', [second.cookie]);
     expect(unblocked.status).toBe(200);
-    expect(unblocked.body).toEqual({ ok: true });
-    expect((await request(app).get('/api/blocks').set('Cookie', alice.cookie)).body.items).toHaveLength(0);
+    const resent = await request(app)
+      .post('/api/friends/requests')
+      .set('Cookie', [first.cookie])
+      .send({ username: 'blocker2' });
+    expect(resent.status).toBe(201);
+    expect(resent.body.id).not.toBe(sent.body.id);
+
+    await request(app)
+      .patch(`/api/friends/requests/${resent.body.id}`)
+      .set('Cookie', [second.cookie])
+      .send({ action: 'accept' });
+    const blockFriend = await request(app)
+      .post('/api/blocks')
+      .set('Cookie', [second.cookie])
+      .send({ user_id: first.user.id });
+    expect(blockFriend.status).toBe(200);
+    const friends = await request(app).get('/api/friends').set('Cookie', [first.cookie]);
+    expect(friends.body.items).toEqual([]);
   });
 
-  it('ranks verified timer sessions by period, scope, privacy opt-out, and tie-break time', async () => {
-    const alice = await createTestUser({ username: 'alice', category: 'college' });
-    const bob = await createTestUser({ username: 'bob', category: 'college' });
-    const carol = await createTestUser({ username: 'carol', category: 'college' });
-    const hidden = await createTestUser({ username: 'hidden', category: 'college' });
+  it('returns null weekly time for friends who hide it and rejects self-blocks', async () => {
+    const owner = await createTestUser({ username: 'privatefriend' });
+    const friend = await createTestUser({ username: 'viewerfriend' });
     const pool = getTestPool();
-    const subjects = await Promise.all([
-      createTestSubject(alice.user.id),
-      createTestSubject(bob.user.id),
-      createTestSubject(carol.user.id),
-      createTestSubject(hidden.user.id),
-    ]);
     await pool.query(
       `INSERT INTO friendships (requester_id, receiver_id, status)
        VALUES ($1, $2, 'accepted')`,
-      [alice.user.id, bob.user.id]
+      [owner.user.id, friend.user.id]
     );
-    await pool.query('UPDATE users SET leaderboard_hidden = true WHERE id = $1', [hidden.user.id]);
-
-    const insertSession = (userId, subjectId, seconds, source, verified, minutesAgo) => pool.query(
-      `INSERT INTO sessions
-         (user_id, subject_id, started_at, ended_at, status, segment_started_at,
-          study_seconds, source, verified)
-       VALUES ($1, $2, NOW() - ($6 * INTERVAL '1 minute'),
-          NOW() - (($6 - 1) * INTERVAL '1 minute'), 'ended',
-          NOW() - ($6 * INTERVAL '1 minute'), $3, $4, $5)`,
-      [userId, subjectId, seconds, source, verified, minutesAgo]
+    await pool.query(
+      `UPDATE users SET privacy = '{"weekly_time":"nobody","subjects":"friends"}'::jsonb WHERE id = $1`,
+      [owner.user.id]
     );
-    await insertSession(alice.user.id, subjects[0].id, 1800, 'timer', true, 20);
-    await insertSession(bob.user.id, subjects[1].id, 1800, 'timer', true, 10);
-    await insertSession(carol.user.id, subjects[2].id, 3600, 'timer', true, 15);
-    await insertSession(hidden.user.id, subjects[3].id, 7200, 'timer', true, 5);
-    await insertSession(carol.user.id, subjects[2].id, 9000, 'manual', false, 4);
+    await pool.query(
+      `INSERT INTO daily_totals (user_id, day, minutes, verified_minutes)
+       VALUES ($1, CURRENT_DATE, 60, 60)`,
+      [owner.user.id]
+    );
 
-    const publicBoard = await request(app)
-      .get('/api/leaderboards?period=week&category=college&scope=all')
-      .set('Cookie', alice.cookie);
-    expect(publicBoard.status).toBe(200);
-    expect(publicBoard.body.entries.map((entry) => entry.username)).toEqual(['carol', 'bob', 'alice']);
-    expect(publicBoard.body.me).toMatchObject({ rank: 3, seconds: 1800 });
+    const friends = await request(app).get('/api/friends').set('Cookie', [friend.cookie]);
+    expect(friends.body.items).toHaveLength(1);
+    expect(friends.body.items[0].week_seconds).toBeNull();
 
-    const friendsBoard = await request(app)
-      .get('/api/leaderboards?period=week&scope=friends')
-      .set('Cookie', alice.cookie);
-    expect(friendsBoard.status).toBe(200);
-    expect(friendsBoard.body.entries.map((entry) => entry.username)).toEqual(['bob', 'alice']);
+    const selfBlock = await request(app)
+      .post('/api/blocks')
+      .set('Cookie', [friend.cookie])
+      .send({ user_id: friend.user.id });
+    expect(selfBlock.status).toBe(400);
   });
 });

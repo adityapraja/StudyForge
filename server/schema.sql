@@ -59,12 +59,113 @@ CREATE TABLE IF NOT EXISTS sessions (
   note VARCHAR(200),
   source VARCHAR(20) NOT NULL DEFAULT 'timer' CHECK (source IN ('timer', 'manual')),
   verified BOOLEAN NOT NULL DEFAULT true,
+  leaderboard_credited_seconds INTEGER NOT NULL DEFAULT 0 CHECK (leaderboard_credited_seconds >= 0),
+  leaderboard_credited_at TIMESTAMPTZ,
+  disqualified_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CHECK (ended_at IS NULL OR ended_at >= started_at)
 );
 
+ALTER TABLE sessions
+  ADD COLUMN IF NOT EXISTS leaderboard_credited_seconds INTEGER NOT NULL DEFAULT 0
+    CHECK (leaderboard_credited_seconds >= 0);
+ALTER TABLE sessions
+  ADD COLUMN IF NOT EXISTS leaderboard_credited_at TIMESTAMPTZ;
+
+DO $migration$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'sessions_leaderboard_credit_eligible'
+      AND conrelid = 'public.sessions'::regclass
+  ) THEN
+    ALTER TABLE sessions
+      ADD CONSTRAINT sessions_leaderboard_credit_eligible
+      CHECK (
+        (leaderboard_credited_seconds = 0 AND leaderboard_credited_at IS NULL)
+        OR (
+          leaderboard_credited_seconds > 0
+          AND leaderboard_credited_at IS NOT NULL
+          AND source = 'timer'
+          AND verified = true
+          AND status = 'ended'
+          AND ended_at IS NOT NULL
+          AND study_seconds IS NOT NULL
+          AND leaderboard_credited_seconds <= study_seconds
+        )
+      ) NOT VALID;
+  END IF;
+END
+$migration$;
+ALTER TABLE sessions VALIDATE CONSTRAINT sessions_leaderboard_credit_eligible;
+
 CREATE INDEX IF NOT EXISTS idx_sessions_user_started ON sessions(user_id, started_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_user_open ON sessions(user_id) WHERE ended_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_sessions_leaderboard_credit
+  ON sessions(leaderboard_credited_at, user_id)
+  WHERE source = 'timer' AND verified = true AND status = 'ended'
+    AND leaderboard_credited_seconds > 0;
+
+CREATE TABLE IF NOT EXISTS session_disqualifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  scope VARCHAR(20) NOT NULL CHECK (scope IN ('session', 'user_day')),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  session_id UUID REFERENCES sessions(id) ON DELETE CASCADE,
+  day DATE,
+  reason VARCHAR(50) NOT NULL CHECK (reason IN ('confirmed_invalid_session', 'confirmed_day_tampering')),
+  confirmed_by VARCHAR(255) NOT NULL,
+  confirmation_reference VARCHAR(255) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (
+    (scope = 'session' AND session_id IS NOT NULL AND day IS NULL
+      AND reason = 'confirmed_invalid_session')
+    OR
+    (scope = 'user_day' AND session_id IS NULL AND day IS NOT NULL
+      AND reason = 'confirmed_day_tampering')
+  )
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_session_disqualifications_session
+  ON session_disqualifications(session_id) WHERE scope = 'session';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_session_disqualifications_user_day
+  ON session_disqualifications(user_id, day) WHERE scope = 'user_day';
+
+CREATE TABLE IF NOT EXISTS session_day_credits (
+  session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  day DATE NOT NULL,
+  original_verified_minutes INTEGER NOT NULL CHECK (original_verified_minutes >= 0),
+  verified_minutes INTEGER NOT NULL CHECK (
+    verified_minutes >= 0 AND verified_minutes <= original_verified_minutes
+  ),
+  original_leaderboard_credited_seconds INTEGER NOT NULL CHECK (
+    original_leaderboard_credited_seconds >= 0
+    AND original_leaderboard_credited_seconds = original_verified_minutes * 60
+  ),
+  leaderboard_credited_seconds INTEGER NOT NULL CHECK (
+    leaderboard_credited_seconds >= 0
+    AND leaderboard_credited_seconds <= original_leaderboard_credited_seconds
+    AND leaderboard_credited_seconds = verified_minutes * 60
+  ),
+  credited_at TIMESTAMPTZ,
+  revoked_at TIMESTAMPTZ,
+  disqualification_id UUID REFERENCES session_disqualifications(id),
+  PRIMARY KEY (session_id, day),
+  CHECK (
+    (leaderboard_credited_seconds = 0 AND credited_at IS NULL)
+    OR (leaderboard_credited_seconds > 0 AND credited_at IS NOT NULL)
+    OR (revoked_at IS NOT NULL AND credited_at IS NOT NULL)
+  ),
+  CHECK (
+    (disqualification_id IS NULL AND revoked_at IS NULL)
+    OR (disqualification_id IS NOT NULL AND revoked_at IS NOT NULL
+      AND verified_minutes = 0 AND leaderboard_credited_seconds = 0)
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_day_credits_user_day
+  ON session_day_credits(user_id, day, credited_at)
+  WHERE leaderboard_credited_seconds > 0;
 
 -- 4. Daily Totals
 CREATE TABLE IF NOT EXISTS daily_totals (
@@ -117,10 +218,35 @@ CREATE TABLE IF NOT EXISTS xp_events (
   kind VARCHAR(50) NOT NULL,
   amount INTEGER NOT NULL CHECK (amount >= 0),
   day DATE NOT NULL,
+  reversed_at TIMESTAMPTZ,
+  disqualification_id UUID,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 ALTER TABLE xp_events ADD COLUMN IF NOT EXISTS reference_id VARCHAR(255);
+ALTER TABLE xp_events ADD COLUMN IF NOT EXISTS reversed_at TIMESTAMPTZ;
+ALTER TABLE xp_events ADD COLUMN IF NOT EXISTS disqualification_id UUID;
+
+DO $migration$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint c
+    JOIN pg_attribute a
+      ON a.attrelid = c.conrelid
+     AND a.attnum = ANY(c.conkey)
+    WHERE c.contype = 'f'
+      AND c.conrelid = 'public.xp_events'::regclass
+      AND c.confrelid = 'public.session_disqualifications'::regclass
+      AND a.attname = 'disqualification_id'
+  ) THEN
+    ALTER TABLE xp_events
+      ADD CONSTRAINT xp_events_disqualification_fk
+      FOREIGN KEY (disqualification_id)
+      REFERENCES session_disqualifications(id);
+  END IF;
+END
+$migration$;
 
 CREATE INDEX IF NOT EXISTS idx_xp_events_user ON xp_events(user_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_xp_events_session_kind
@@ -207,10 +333,16 @@ CREATE TABLE IF NOT EXISTS friendships (
   status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'declined')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (requester_id, receiver_id)
+  UNIQUE (requester_id, receiver_id),
+  CONSTRAINT friendships_not_self CHECK (requester_id <> receiver_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_friendships_receiver ON friendships(receiver_id);
+CREATE INDEX IF NOT EXISTS idx_friendships_pending_receiver
+  ON friendships(receiver_id, created_at) WHERE status = 'pending';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_friendships_accepted_pair
+  ON friendships(LEAST(requester_id, receiver_id), GREATEST(requester_id, receiver_id))
+  WHERE status = 'accepted';
 
 -- 12. Blocks
 CREATE TABLE IF NOT EXISTS blocks (
@@ -218,5 +350,8 @@ CREATE TABLE IF NOT EXISTS blocks (
   blocker_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   blocked_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (blocker_id, blocked_id)
+  UNIQUE (blocker_id, blocked_id),
+  CONSTRAINT blocks_not_self CHECK (blocker_id <> blocked_id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_blocks_blocked ON blocks(blocked_id, blocker_id);

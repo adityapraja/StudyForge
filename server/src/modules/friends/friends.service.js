@@ -1,41 +1,22 @@
 import { DateTime } from 'luxon';
 import { query, withTransaction } from '../../db.js';
 import { AppError } from '../../middleware/error-handler.js';
+import { canView } from '../privacy/can-view.service.js';
 
-export const canView = ({
-  viewerId,
-  targetId,
-  field,
-  areFriends = false,
-  blocked = false,
-  privacy = {},
-  isRequestParticipant = false,
-  isBlocker = false,
-  leaderboardHidden = false,
-  audience = 'all',
-}) => {
-  if (blocked) return false;
-
-  if (field === 'leaderboard') {
-    if (leaderboardHidden) return false;
-    return viewerId === targetId || audience === 'all' || areFriends;
-  }
-
-  if (field === 'friend_request') return isRequestParticipant;
-  if (field === 'blocked_user') return isBlocker;
-  if (viewerId === targetId) return true;
-  if (field === 'weekly_time' || field === 'subjects') {
-    return privacy[field] === 'everyone'
-      || (privacy[field] === 'friends' && areFriends);
-  }
-
-  return areFriends;
+const lockUserPair = async (client, firstId, secondId) => {
+  const { rows } = await client.query(
+    `SELECT id FROM users
+     WHERE id = ANY($1::uuid[])
+     ORDER BY id
+     FOR UPDATE`,
+    [[firstId, secondId]]
+  );
+  if (rows.length !== 2) throw new AppError(404, 'NOT_FOUND', 'User not found');
 };
 
 const isBlocked = async (client, firstId, secondId) => {
   const { rows } = await client.query(
-    `SELECT 1
-     FROM blocks
+    `SELECT 1 FROM blocks
      WHERE (blocker_id = $1 AND blocked_id = $2)
         OR (blocker_id = $2 AND blocked_id = $1)
      LIMIT 1`,
@@ -44,366 +25,273 @@ const isBlocked = async (client, firstId, secondId) => {
   return rows.length > 0;
 };
 
-export const createFriendRequest = async (requesterId, username) => withTransaction(async (client) => {
+const requestShape = (row) => ({
+  id: row.id,
+  from: { id: row.requester_id, username: row.requester_username },
+  to: { id: row.receiver_id, username: row.receiver_username },
+});
+
+export const createFriendRequest = async (userId, username) => withTransaction(async (client) => {
   const { rows: targets } = await client.query(
-    'SELECT id, username FROM users WHERE LOWER(username) = LOWER($1)',
+    `SELECT id, username FROM users WHERE LOWER(username) = LOWER($1)`,
     [username]
   );
   const target = targets[0];
-  if (!target || target.id === requesterId) {
+  if (!target) throw new AppError(404, 'NOT_FOUND', 'User not found');
+  if (target.id === userId) {
+    throw new AppError(400, 'INVALID_REQUEST', 'You cannot send a friend request to yourself');
+  }
+
+  await lockUserPair(client, userId, target.id);
+  if (await isBlocked(client, userId, target.id)) {
     throw new AppError(404, 'NOT_FOUND', 'User not found');
   }
 
-  const [firstId, secondId] = [requesterId, target.id].sort();
-  await client.query(
-    'SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))',
-    [firstId, secondId]
+  const { rows: accepted } = await client.query(
+    `SELECT id FROM friendships
+     WHERE status = 'accepted'
+       AND ((requester_id = $1 AND receiver_id = $2)
+         OR (requester_id = $2 AND receiver_id = $1))
+     LIMIT 1`,
+    [userId, target.id]
   );
-
-  if (await isBlocked(client, requesterId, target.id)) {
-    throw new AppError(404, 'NOT_FOUND', 'User not found');
+  if (accepted.length > 0) {
+    throw new AppError(409, 'ALREADY_FRIENDS', 'You are already friends');
   }
 
-  const { rows: relationships } = await client.query(
-    `SELECT id, requester_id, receiver_id, status
-     FROM friendships
-     WHERE (requester_id = $1 AND receiver_id = $2)
-        OR (requester_id = $2 AND receiver_id = $1)
+  const { rows: sameDirection } = await client.query(
+    `SELECT id, status FROM friendships
+     WHERE requester_id = $1 AND receiver_id = $2
      FOR UPDATE`,
-    [requesterId, target.id]
+    [userId, target.id]
   );
-
-  if (relationships.some((relationship) => relationship.status === 'accepted')) {
-    throw new AppError(409, 'ALREADY_FRIENDS', 'You are already friends with this user');
+  if (sameDirection[0]?.status === 'pending') {
+    throw new AppError(409, 'FRIEND_REQUEST_EXISTS', 'A friend request is already pending');
   }
-  if (relationships.some((relationship) => relationship.status === 'pending')) {
-    throw new AppError(409, 'FRIEND_REQUEST_PENDING', 'A friend request is already pending');
-  }
-
-  const ownRequest = relationships.find((relationship) => relationship.requester_id === requesterId);
-  const result = ownRequest
-    ? await client.query(
-      `UPDATE friendships SET status = 'pending', updated_at = NOW()
-       WHERE id = $1
-       RETURNING id, requester_id, receiver_id, status, created_at`,
-      [ownRequest.id]
-    )
-    : await client.query(
-      `INSERT INTO friendships (requester_id, receiver_id)
-       VALUES ($1, $2)
-       RETURNING id, requester_id, receiver_id, status, created_at`,
-      [requesterId, target.id]
+  const { rows: reciprocal } = await client.query(
+    `SELECT id FROM friendships
+     WHERE requester_id = $2 AND receiver_id = $1 AND status = 'pending'
+     FOR UPDATE`,
+    [userId, target.id]
+  );
+  if (reciprocal.length > 0) {
+    await client.query(
+      `DELETE FROM friendships
+       WHERE requester_id = $1 AND receiver_id = $2 AND status = 'declined'`,
+      [userId, target.id]
     );
-  return result.rows[0];
+    await client.query(
+      `UPDATE friendships SET status = 'accepted', updated_at = NOW() WHERE id = $1`,
+      [reciprocal[0].id]
+    );
+    const { rows } = await client.query(
+      `SELECT friendships.id, friendships.requester_id, requester.username AS requester_username,
+              friendships.receiver_id, receiver.username AS receiver_username
+       FROM friendships
+       JOIN users requester ON requester.id = friendships.requester_id
+       JOIN users receiver ON receiver.id = friendships.receiver_id
+       WHERE friendships.id = $1`,
+      [reciprocal[0].id]
+    );
+    return requestShape(rows[0]);
+  }
+
+  if (sameDirection[0]?.status === 'declined') {
+    const { rows } = await client.query(
+      `UPDATE friendships
+       SET status = 'pending', updated_at = NOW()
+       WHERE id = $1
+       RETURNING id`,
+      [sameDirection[0].id]
+    );
+    const { rows: requesterRows } = await client.query(
+      'SELECT username FROM users WHERE id = $1',
+      [userId]
+    );
+    return {
+      id: rows[0].id,
+      from: { id: userId, username: requesterRows[0].username },
+      to: { id: target.id, username: target.username },
+    };
+  }
+
+  const { rows } = await client.query(
+    `INSERT INTO friendships (requester_id, receiver_id)
+     VALUES ($1, $2)
+     RETURNING id`,
+    [userId, target.id]
+  );
+  const { rows: requesterRows } = await client.query(
+    'SELECT username FROM users WHERE id = $1',
+    [userId]
+  );
+  return {
+    id: rows[0].id,
+    from: { id: userId, username: requesterRows[0].username },
+    to: { id: target.id, username: target.username },
+  };
 });
 
 export const getFriendRequests = async (userId) => {
   const { rows } = await query(
-    `SELECT friendship.id, friendship.requester_id, friendship.receiver_id,
-            requester.username AS requester_username,
-            receiver.username AS receiver_username,
-            EXISTS (
-              SELECT 1 FROM blocks
-              WHERE (blocker_id = friendship.requester_id AND blocked_id = friendship.receiver_id)
-                 OR (blocker_id = friendship.receiver_id AND blocked_id = friendship.requester_id)
-            ) AS blocked
-     FROM friendships friendship
-     JOIN users requester ON requester.id = friendship.requester_id
-     JOIN users receiver ON receiver.id = friendship.receiver_id
-     WHERE friendship.status = 'pending'
-       AND (friendship.requester_id = $1 OR friendship.receiver_id = $1)
-     ORDER BY friendship.created_at, friendship.id`,
+    `SELECT friendships.id, friendships.requester_id, requester.username AS requester_username,
+            friendships.receiver_id, receiver.username AS receiver_username
+     FROM friendships
+     JOIN users requester ON requester.id = friendships.requester_id
+     JOIN users receiver ON receiver.id = friendships.receiver_id
+     WHERE friendships.status = 'pending'
+       AND (friendships.requester_id = $1 OR friendships.receiver_id = $1)
+       AND NOT EXISTS (
+         SELECT 1 FROM blocks
+         WHERE (blocker_id = friendships.requester_id AND blocked_id = friendships.receiver_id)
+            OR (blocker_id = friendships.receiver_id AND blocked_id = friendships.requester_id)
+       )
+     ORDER BY friendships.created_at, friendships.id`,
     [userId]
   );
-
-  const incoming = [];
-  const outgoing = [];
-  for (const request of rows) {
-    if (request.receiver_id === userId) {
-      if (!canView({
-        viewerId: userId,
-        targetId: request.requester_id,
-        field: 'friend_request',
-        isRequestParticipant: true,
-        blocked: request.blocked,
-      })) continue;
-      incoming.push({
-        id: request.id,
-        from: { id: request.requester_id, username: request.requester_username },
-      });
-    } else {
-      if (!canView({
-        viewerId: userId,
-        targetId: request.receiver_id,
-        field: 'friend_request',
-        isRequestParticipant: true,
-        blocked: request.blocked,
-      })) continue;
-      outgoing.push({
-        id: request.id,
-        to: { id: request.receiver_id, username: request.receiver_username },
-      });
-    }
-  }
-  return { incoming, outgoing };
-};
-
-export const updateFriendRequest = async (userId, requestId, action) => withTransaction(async (client) => {
-  const { rows } = await client.query(
-    `SELECT id, requester_id, receiver_id, status
-     FROM friendships WHERE id = $1 FOR UPDATE`,
-    [requestId]
-  );
-  const friendship = rows[0];
-  if (!friendship || friendship.receiver_id !== userId || friendship.status !== 'pending') {
-    throw new AppError(404, 'NOT_FOUND', 'Friend request not found');
-  }
-  if (await isBlocked(client, friendship.requester_id, friendship.receiver_id)) {
-    throw new AppError(404, 'NOT_FOUND', 'Friend request not found');
-  }
-  const status = action === 'accept' ? 'accepted' : 'declined';
-  const result = await client.query(
-    `UPDATE friendships SET status = $1, updated_at = NOW()
-     WHERE id = $2
-     RETURNING id, requester_id, receiver_id, status`,
-    [status, requestId]
-  );
-  return result.rows[0];
-});
-
-export const getFriends = async (userId) => {
-  const { rows } = await query(
-    `SELECT friend.id AS user_id, friend.username, friend.level,
-            COALESCE(streak.current, 0)::integer AS streak_current,
-            friend.privacy,
-            EXISTS (
-              SELECT 1 FROM blocks
-              WHERE (blocker_id = $1 AND blocked_id = friend.id)
-                 OR (blocker_id = friend.id AND blocked_id = $1)
-            ) AS blocked,
-            weekly.seconds AS week_seconds,
-            subject_week.items AS subjects
-     FROM friendships friendship
-     JOIN users friend
-       ON friend.id = CASE
-         WHEN friendship.requester_id = $1 THEN friendship.receiver_id
-         ELSE friendship.requester_id
-       END
-     LEFT JOIN streaks streak ON streak.user_id = friend.id
-     LEFT JOIN LATERAL (
-       SELECT (COALESCE(SUM(totals.minutes), 0) * 60)::integer AS seconds
-       FROM daily_totals totals
-       WHERE totals.user_id = friend.id
-         AND totals.day >= date_trunc('week', NOW() AT TIME ZONE friend.time_zone)::date
-         AND totals.day < (date_trunc('week', NOW() AT TIME ZONE friend.time_zone)::date + 7)
-     ) weekly ON true
-     LEFT JOIN LATERAL (
-       SELECT json_agg(
-         json_build_object(
-           'subject_id', summary.id,
-           'name', summary.name,
-           'color', summary.color,
-           'seconds', summary.seconds
-         ) ORDER BY summary.name
-       ) AS items
-       FROM (
-         SELECT subject.id, subject.name, subject.color,
-                (SUM(subject_totals.minutes) * 60)::integer AS seconds
-         FROM subject_daily_totals subject_totals
-         JOIN subjects subject ON subject.id = subject_totals.subject_id
-         WHERE subject_totals.user_id = friend.id
-           AND subject_totals.day >= date_trunc('week', NOW() AT TIME ZONE friend.time_zone)::date
-           AND subject_totals.day < (date_trunc('week', NOW() AT TIME ZONE friend.time_zone)::date + 7)
-         GROUP BY subject.id, subject.name, subject.color
-       ) summary
-     ) subject_week ON true
-     WHERE friendship.status = 'accepted'
-       AND (friendship.requester_id = $1 OR friendship.receiver_id = $1)
-     ORDER BY LOWER(friend.username), friend.id`,
-    [userId]
-  );
-
   return {
-    items: rows
-      .filter((friend) => canView({
-        viewerId: userId,
-        targetId: friend.user_id,
-        field: 'profile',
-        areFriends: true,
-        blocked: friend.blocked,
-      }))
-      .map((friend) => ({
-        user_id: friend.user_id,
-        username: friend.username,
-        level: friend.level,
-        streak_current: friend.streak_current,
-        week_seconds: canView({
-          viewerId: userId,
-          targetId: friend.user_id,
-          field: 'weekly_time',
-          areFriends: true,
-          blocked: friend.blocked,
-          privacy: friend.privacy,
-        }) ? friend.week_seconds : null,
-        subjects: canView({
-          viewerId: userId,
-          targetId: friend.user_id,
-          field: 'subjects',
-          areFriends: true,
-          blocked: friend.blocked,
-          privacy: friend.privacy,
-        }) ? friend.subjects || [] : null,
-      })),
+    incoming: rows
+      .filter((row) => row.receiver_id === userId)
+      .map((row) => ({ id: row.id, from: { id: row.requester_id, username: row.requester_username } })),
+    outgoing: rows
+      .filter((row) => row.requester_id === userId)
+      .map((row) => ({ id: row.id, to: { id: row.receiver_id, username: row.receiver_username } })),
   };
 };
 
-export const removeFriend = async (userId, friendId) => {
-  const { rowCount } = await query(
+export const respondToFriendRequest = async (userId, requestId, action) => withTransaction(async (client) => {
+  const { rows: initialRows } = await client.query(
+    `SELECT requester_id, receiver_id
+     FROM friendships
+     WHERE id = $1 AND receiver_id = $2 AND status = 'pending'
+     `,
+    [requestId, userId]
+  );
+  const initial = initialRows[0];
+  if (!initial) throw new AppError(404, 'NOT_FOUND', 'Friend request not found');
+
+  await lockUserPair(client, initial.requester_id, initial.receiver_id);
+  const { rows: lockedRows } = await client.query(
+    `SELECT id, requester_id, receiver_id
+     FROM friendships
+     WHERE id = $1 AND receiver_id = $2 AND status = 'pending'
+     FOR UPDATE`,
+    [requestId, userId]
+  );
+  const friendship = lockedRows[0];
+  if (!friendship) throw new AppError(404, 'NOT_FOUND', 'Friend request not found');
+
+  if (await isBlocked(client, friendship.requester_id, friendship.receiver_id)) {
+    throw new AppError(404, 'NOT_FOUND', 'Friend request not found');
+  }
+
+  if (action === 'accept') {
+    await client.query(
+      `DELETE FROM friendships
+       WHERE status = 'pending'
+         AND requester_id = $1 AND receiver_id = $2`,
+      [friendship.receiver_id, friendship.requester_id]
+    );
+    await client.query(
+      `UPDATE friendships SET status = 'accepted', updated_at = NOW() WHERE id = $1`,
+      [requestId]
+    );
+  } else {
+    await client.query(
+      `UPDATE friendships SET status = 'declined', updated_at = NOW() WHERE id = $1`,
+      [requestId]
+    );
+  }
+  return { ok: true };
+});
+
+export const getFriends = async (userId) => withTransaction(async (client) => {
+  await client.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+  const { rows: friendRows } = await client.query(
+    `SELECT friend.id AS user_id, friend.username, friend.time_zone, friend.level,
+            COALESCE(streaks.current, 0) AS streak_current
+     FROM friendships
+     JOIN users friend
+       ON friend.id = CASE
+         WHEN friendships.requester_id = $1 THEN friendships.receiver_id
+         ELSE friendships.requester_id
+       END
+     LEFT JOIN streaks ON streaks.user_id = friend.id
+     WHERE friendships.status = 'accepted'
+       AND (friendships.requester_id = $1 OR friendships.receiver_id = $1)
+       AND NOT EXISTS (
+         SELECT 1 FROM blocks
+         WHERE (blocker_id = $1 AND blocked_id = friend.id)
+            OR (blocker_id = friend.id AND blocked_id = $1)
+       )
+     ORDER BY friend.username, friend.id`,
+    [userId]
+  );
+
+  const items = [];
+  for (const friend of friendRows) {
+    const visible = await canView(userId, friend.user_id, 'weekly_time', client);
+    let weekSeconds = null;
+    if (visible) {
+      const zone = friend.time_zone || 'UTC';
+      const now = DateTime.now().setZone(zone);
+      const { rows } = await client.query(
+        `SELECT COALESCE(SUM(minutes), 0)::integer * 60 AS seconds
+         FROM daily_totals
+         WHERE user_id = $1 AND day >= $2 AND day <= $3`,
+        [friend.user_id, now.startOf('week').toISODate(), now.endOf('week').toISODate()]
+      );
+      weekSeconds = rows[0].seconds;
+    }
+    items.push({
+      user_id: friend.user_id,
+      username: friend.username,
+      level: friend.level,
+      streak_current: friend.streak_current,
+      week_seconds: weekSeconds,
+    });
+  }
+  return { items };
+});
+
+export const removeFriend = async (userId, friendId) => withTransaction(async (client) => {
+  if (userId === friendId) throw new AppError(400, 'INVALID_REQUEST', 'Cannot remove yourself as a friend');
+  await lockUserPair(client, userId, friendId);
+  const { rows } = await client.query(
     `DELETE FROM friendships
      WHERE status = 'accepted'
        AND ((requester_id = $1 AND receiver_id = $2)
-         OR (requester_id = $2 AND receiver_id = $1))`,
+         OR (requester_id = $2 AND receiver_id = $1))
+     RETURNING id`,
     [userId, friendId]
   );
-  if (!rowCount) throw new AppError(404, 'NOT_FOUND', 'Friend not found');
-};
+  if (rows.length === 0) throw new AppError(404, 'NOT_FOUND', 'Friend not found');
+  return { ok: true };
+});
 
-export const blockUser = async (blockerId, blockedId) => withTransaction(async (client) => {
-  if (blockerId === blockedId) {
-    throw new AppError(400, 'VALIDATION_ERROR', 'You cannot block yourself');
-  }
-  const [firstId, secondId] = [blockerId, blockedId].sort();
-  await client.query(
-    'SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))',
-    [firstId, secondId]
-  );
-  const { rows } = await client.query('SELECT id FROM users WHERE id = $1', [blockedId]);
-  if (!rows.length) throw new AppError(404, 'NOT_FOUND', 'User not found');
-
+export const blockUser = async (userId, blockedId) => withTransaction(async (client) => {
+  if (userId === blockedId) throw new AppError(400, 'INVALID_REQUEST', 'Cannot block yourself');
+  await lockUserPair(client, userId, blockedId);
   await client.query(
     `INSERT INTO blocks (blocker_id, blocked_id)
      VALUES ($1, $2)
      ON CONFLICT (blocker_id, blocked_id) DO NOTHING`,
-    [blockerId, blockedId]
+    [userId, blockedId]
   );
   await client.query(
     `DELETE FROM friendships
      WHERE (requester_id = $1 AND receiver_id = $2)
         OR (requester_id = $2 AND receiver_id = $1)`,
-    [blockerId, blockedId]
+    [userId, blockedId]
   );
+  return { ok: true };
 });
 
-export const getBlockedUsers = async (blockerId) => {
+export const unblockUser = async (userId, blockedId) => {
   const { rows } = await query(
-    `SELECT blocked.id AS user_id, blocked.username
-     FROM blocks
-     JOIN users blocked ON blocked.id = blocks.blocked_id
-     WHERE blocks.blocker_id = $1
-     ORDER BY LOWER(blocked.username), blocked.id`,
-    [blockerId]
+    'DELETE FROM blocks WHERE blocker_id = $1 AND blocked_id = $2 RETURNING id',
+    [userId, blockedId]
   );
-  return {
-    items: rows.filter((blocked) => canView({
-      viewerId: blockerId,
-      targetId: blocked.user_id,
-      field: 'blocked_user',
-      isBlocker: true,
-    })),
-  };
-};
-
-export const unblockUser = async (blockerId, blockedId) => {
-  const { rowCount } = await query(
-    'DELETE FROM blocks WHERE blocker_id = $1 AND blocked_id = $2',
-    [blockerId, blockedId]
-  );
-  if (!rowCount) throw new AppError(404, 'NOT_FOUND', 'Block not found');
-};
-
-export const periodBounds = (period, timeZone) => {
-  const now = DateTime.now().setZone(timeZone);
-  const start = period === 'day'
-    ? now.startOf('day')
-    : period === 'week'
-      ? now.startOf('week')
-      : now.startOf('month');
-  const next = period === 'day'
-    ? start.plus({ days: 1 })
-    : period === 'week'
-      ? start.plus({ weeks: 1 })
-      : start.plus({ months: 1 });
-  return { start, next };
-};
-
-export const getLeaderboard = async (viewer, { period, category, scope }) => {
-  const bounds = periodBounds(period, viewer.time_zone);
-  const { rows } = await query(
-    `WITH scores AS (
-       SELECT study_session.user_id,
-              SUM(study_session.study_seconds)::integer AS seconds,
-              MAX(study_session.ended_at) AS reached_at,
-              EXISTS (
-                SELECT 1 FROM friendships friendship
-                WHERE friendship.status = 'accepted'
-                  AND ((friendship.requester_id = $2 AND friendship.receiver_id = study_session.user_id)
-                    OR (friendship.receiver_id = $2 AND friendship.requester_id = study_session.user_id))
-              ) AS are_friends,
-              EXISTS (
-                SELECT 1 FROM blocks
-                WHERE (blocker_id = $2 AND blocked_id = study_session.user_id)
-                   OR (blocker_id = study_session.user_id AND blocked_id = $2)
-              ) AS blocked,
-              user_row.leaderboard_hidden
-       FROM sessions study_session
-       JOIN users user_row ON user_row.id = study_session.user_id AND user_row.category = $1
-       WHERE study_session.ended_at IS NOT NULL
-         AND study_session.source = 'timer'
-         AND study_session.verified = true
-         AND study_session.study_seconds > 0
-         AND study_session.started_at >= $3
-         AND study_session.started_at < $4
-       GROUP BY study_session.user_id, user_row.leaderboard_hidden
-     )
-     SELECT user_row.id AS user_id, user_row.username, user_row.level,
-            scores.seconds, scores.reached_at, scores.are_friends,
-            scores.blocked, scores.leaderboard_hidden
-     FROM scores
-     JOIN users user_row ON user_row.id = scores.user_id
-     ORDER BY scores.seconds DESC, scores.reached_at ASC, user_row.id ASC`,
-    [
-      category,
-      viewer.id,
-      bounds.start.toUTC().toISO(),
-      bounds.next.toUTC().toISO(),
-    ]
-  );
-
-  const visible = rows.filter((entry) => canView({
-    viewerId: viewer.id,
-    targetId: entry.user_id,
-    field: 'leaderboard',
-    areFriends: entry.are_friends,
-    blocked: entry.blocked,
-    leaderboardHidden: entry.leaderboard_hidden,
-    audience: scope,
-  }));
-  const ranked = visible.map((entry, index) => ({
-    rank: index + 1,
-    user_id: entry.user_id,
-    username: entry.username,
-    level: entry.level,
-    seconds: entry.seconds,
-  }));
-  const mine = ranked.find((entry) => entry.user_id === viewer.id);
-
-  return {
-    period,
-    category,
-    scope,
-    period_start: bounds.start.toISODate(),
-    period_end: bounds.next.minus({ days: 1 }).toISODate(),
-    entries: ranked.slice(0, 50),
-    me: mine ? { rank: mine.rank, seconds: mine.seconds } : null,
-  };
+  if (rows.length === 0) throw new AppError(404, 'NOT_FOUND', 'Block not found');
+  return { ok: true };
 };
