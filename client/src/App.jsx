@@ -120,6 +120,13 @@ function App() {
   const [goals, setGoals] = useState(null);
   const [exams, setExams] = useState([]);
   const [insights, setInsights] = useState([]);
+  const [friends, setFriends] = useState([]);
+  const [blockedUsers, setBlockedUsers] = useState([]);
+  const [friendRequests, setFriendRequests] = useState({ incoming: [], outgoing: [] });
+  const [leaderboard, setLeaderboard] = useState(null);
+  const [leaderboardFilters, setLeaderboardFilters] = useState({ period: 'week', category: '', scope: 'all' });
+  const [friendUsername, setFriendUsername] = useState('');
+  const [socialLoading, setSocialLoading] = useState(false);
   const [syllabus, setSyllabus] = useState(null);
   const [syllabusSubjectId, setSyllabusSubjectId] = useState('');
   const [selectedRange, setSelectedRange] = useState('week');
@@ -212,6 +219,58 @@ function App() {
     return () => { active = false; };
   }, [isAuthenticated, user]);
 
+  useEffect(() => {
+    if (!isAuthenticated || !user || mode !== 'friends') return undefined;
+    let active = true;
+
+    const load = async (key, path, update) => {
+      try {
+        const value = await request(path);
+        if (!active) return;
+        update(value);
+        setLoadErrors((current) => ({ ...current, [key]: undefined }));
+      } catch (error) {
+        if (active) setLoadErrors((current) => ({ ...current, [key]: error.message }));
+      }
+    };
+
+    Promise.all([
+      load('friends', '/api/friends', (value) => setFriends(normalizeList(value))),
+      load('blockedUsers', '/api/blocks', (value) => setBlockedUsers(normalizeList(value))),
+      load('friendRequests', '/api/friends/requests', (value) => setFriendRequests({
+        incoming: Array.isArray(value?.incoming) ? value.incoming : [],
+        outgoing: Array.isArray(value?.outgoing) ? value.outgoing : [],
+      })),
+    ]).finally(() => {
+      if (active) setSocialLoading(false);
+    });
+
+    return () => { active = false; };
+  }, [isAuthenticated, mode, user]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !user || mode !== 'leaderboard') return undefined;
+    let active = true;
+    const query = new URLSearchParams({
+      period: leaderboardFilters.period,
+      category: leaderboardFilters.category || user.category,
+      scope: leaderboardFilters.scope,
+    });
+    request(`/api/leaderboards?${query}`)
+      .then((data) => {
+        if (!active) return;
+        setLeaderboard(data);
+        setLoadErrors((current) => ({ ...current, leaderboard: undefined }));
+      })
+      .catch((error) => {
+        if (active) setLoadErrors((current) => ({ ...current, leaderboard: error.message }));
+      })
+      .finally(() => {
+        if (active) setSocialLoading(false);
+      });
+    return () => { active = false; };
+  }, [isAuthenticated, leaderboardFilters, mode, user]);
+
   const todaySeconds = goals?.today_seconds ?? 0;
 
   const trackedTime = useMemo(() => {
@@ -245,6 +304,99 @@ function App() {
     setStats({ ...emptyStats, ...progress, subjects: normalizeList(subjectStats.subjects) });
     setHeatmap({ ...heatmapData, days: normalizeList(heatmapData.days) });
     setPlanner({ ...emptyPlanner, ...plannerData, goals: normalizeList(plannerData.goals), tasks: normalizeList(plannerData.tasks) });
+  };
+
+  const refreshSocialLists = async () => {
+    setSocialLoading(true);
+    const load = async (key, path, update) => {
+      try {
+        const value = await request(path);
+        update(value);
+        setLoadErrors((current) => ({ ...current, [key]: undefined }));
+      } catch (error) {
+        setLoadErrors((current) => ({ ...current, [key]: error.message }));
+      }
+    };
+    await Promise.all([
+      load('friends', '/api/friends', (value) => setFriends(normalizeList(value))),
+      load('blockedUsers', '/api/blocks', (value) => setBlockedUsers(normalizeList(value))),
+      load('friendRequests', '/api/friends/requests', (value) => setFriendRequests({
+        incoming: Array.isArray(value?.incoming) ? value.incoming : [],
+        outgoing: Array.isArray(value?.outgoing) ? value.outgoing : [],
+      })),
+    ]);
+    setSocialLoading(false);
+  };
+
+  const handleFriendRequestSubmit = async (event) => {
+    event.preventDefault();
+    const username = friendUsername.trim();
+    if (!username) return;
+    try {
+      await request('/api/friends/requests', {
+        method: 'POST',
+        body: JSON.stringify({ username }),
+      });
+      setFriendUsername('');
+      await refreshSocialLists();
+      setSuccessMessage(`Friend request sent to ${username}.`);
+      setLoadErrors((current) => ({ ...current, social: undefined }));
+    } catch (error) {
+      setLoadErrors((current) => ({ ...current, social: error.message }));
+    }
+  };
+
+  const handleFriendRequestAction = async (requestId, action) => {
+    try {
+      await request(`/api/friends/requests/${requestId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ action }),
+      });
+      await refreshSocialLists();
+      setSuccessMessage(action === 'accept' ? 'Friend request accepted.' : 'Friend request declined.');
+      setLoadErrors((current) => ({ ...current, social: undefined }));
+    } catch (error) {
+      setLoadErrors((current) => ({ ...current, social: error.message }));
+    }
+  };
+
+  const handleFriendRemove = async (friend) => {
+    if (!window.confirm(`Remove ${friend.username} from your friends?`)) return;
+    try {
+      await request(`/api/friends/${friend.user_id}`, { method: 'DELETE' });
+      await refreshSocialLists();
+      setSuccessMessage(`${friend.username} was removed from your friends.`);
+      setLoadErrors((current) => ({ ...current, social: undefined }));
+    } catch (error) {
+      setLoadErrors((current) => ({ ...current, social: error.message }));
+    }
+  };
+
+  const handleBlockUser = async (person) => {
+    if (!person?.id) return;
+    if (!window.confirm(`Block ${person.username}? This also removes any friendship and hides both profiles from each other.`)) return;
+    try {
+      await request('/api/blocks', {
+        method: 'POST',
+        body: JSON.stringify({ user_id: person.id }),
+      });
+      await refreshSocialLists();
+      setSuccessMessage(`${person.username} was blocked.`);
+      setLoadErrors((current) => ({ ...current, social: undefined }));
+    } catch (error) {
+      setLoadErrors((current) => ({ ...current, social: error.message }));
+    }
+  };
+
+  const handleUnblockUser = async (person) => {
+    try {
+      await request(`/api/blocks/${person.user_id}`, { method: 'DELETE' });
+      await refreshSocialLists();
+      setSuccessMessage(`${person.username} was unblocked.`);
+      setLoadErrors((current) => ({ ...current, social: undefined }));
+    } catch (error) {
+      setLoadErrors((current) => ({ ...current, social: error.message }));
+    }
   };
 
   const handleAuthSubmit = async (event) => {
@@ -1137,6 +1289,185 @@ function App() {
     );
   };
 
+  const renderFriends = () => (
+    <section className="page-shell">
+      <div className="section-heading">
+        <p className="eyebrow">Social</p>
+        <h1>Study with friends</h1>
+        <p>Send requests by username and manage the people you share progress with.</p>
+      </div>
+      {loadErrors.social || loadErrors.friends || loadErrors.friendRequests || loadErrors.blockedUsers ? (
+        <p className="error-message" role="alert">{loadErrors.social || loadErrors.friends || loadErrors.friendRequests || loadErrors.blockedUsers}</p>
+      ) : null}
+      {successMessage ? <p className="success-message" role="status">{successMessage}</p> : null}
+      <form className="panel friend-request-form" onSubmit={handleFriendRequestSubmit}>
+        <h2>Add a friend</h2>
+        <label>
+          <span>Username</span>
+          <input
+            type="text"
+            value={friendUsername}
+            onChange={(event) => setFriendUsername(event.target.value)}
+            minLength="3"
+            maxLength="20"
+            pattern="[A-Za-z0-9_]+"
+            required
+            aria-label="Username to send a friend request to"
+          />
+        </label>
+        <button type="submit" className="primary-button" disabled={socialLoading}>Send request</button>
+      </form>
+
+      <div className="split-layout top-gap">
+        <section className="panel" aria-labelledby="incoming-requests-heading">
+          <div className="panel-header"><h2 id="incoming-requests-heading">Incoming requests</h2></div>
+          {friendRequests.incoming.length ? (
+            <ul className="list-stack">
+              {friendRequests.incoming.map((item) => (
+                <li key={item.id} className="social-row">
+                  <span>{item.from?.username || 'Unknown user'}</span>
+                  <div className="row-actions">
+                    <button type="button" className="primary-button" onClick={() => handleFriendRequestAction(item.id, 'accept')}>Accept</button>
+                    <button type="button" className="ghost-button" onClick={() => handleFriendRequestAction(item.id, 'decline')}>Decline</button>
+                    {item.from?.id ? <button type="button" className="ghost-button danger" onClick={() => handleBlockUser(item.from)}>Block</button> : null}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : loadErrors.friendRequests ? null : <p>{socialLoading ? 'Loading requests…' : 'No incoming requests.'}</p>}
+        </section>
+
+        <section className="panel" aria-labelledby="outgoing-requests-heading">
+          <div className="panel-header"><h2 id="outgoing-requests-heading">Sent requests</h2></div>
+          {friendRequests.outgoing.length ? (
+            <ul className="list-stack">
+              {friendRequests.outgoing.map((item) => (
+                <li key={item.id} className="social-row">
+                  <span>{item.to?.username || 'Unknown user'}</span>
+                  {item.to?.id ? <button type="button" className="ghost-button danger" onClick={() => handleBlockUser(item.to)}>Block</button> : null}
+                </li>
+              ))}
+            </ul>
+          ) : loadErrors.friendRequests ? null : <p>{socialLoading ? 'Loading requests…' : 'No pending sent requests.'}</p>}
+        </section>
+      </div>
+
+      <section className="panel top-gap" aria-labelledby="friends-heading">
+        <div className="panel-header"><h2 id="friends-heading">Your friends</h2></div>
+        {friends.length ? (
+          <ul className="list-stack">
+            {friends.map((friend) => (
+              <li key={friend.user_id} className="friend-row">
+                <div>
+                  <strong>{friend.username}</strong>
+                  <p>Level {friend.level} · {friend.streak_current}-day streak · {friend.week_seconds == null ? 'Weekly time hidden' : `${formatSeconds(friend.week_seconds)} this week`}</p>
+                  {friend.subjects == null
+                    ? <p>Subject time hidden</p>
+                    : friend.subjects.length
+                      ? <p>{friend.subjects.map((subject) => `${subject.name}: ${formatSeconds(subject.seconds)}`).join(' · ')}</p>
+                      : <p>No subject time logged this week.</p>}
+                </div>
+                <div className="row-actions">
+                  <button type="button" className="ghost-button danger" onClick={() => handleFriendRemove(friend)}>Remove</button>
+                  <button type="button" className="ghost-button danger" onClick={() => handleBlockUser({ id: friend.user_id, username: friend.username })}>Block</button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : loadErrors.friends ? null : <p>{socialLoading ? 'Loading friends…' : 'No friends yet. Send a request by username to get started.'}</p>}
+      </section>
+      <section className="panel top-gap" aria-labelledby="blocked-users-heading">
+        <div className="panel-header"><h2 id="blocked-users-heading">Blocked users</h2></div>
+        {blockedUsers.length ? (
+          <ul className="list-stack">
+            {blockedUsers.map((person) => (
+              <li key={person.user_id} className="social-row">
+                <span>{person.username}</span>
+                <button type="button" className="ghost-button" onClick={() => handleUnblockUser(person)}>Unblock</button>
+              </li>
+            ))}
+          </ul>
+        ) : loadErrors.blockedUsers ? null : <p>{socialLoading ? 'Loading blocked users…' : 'You have not blocked anyone.'}</p>}
+      </section>
+      <p className="social-note">Friends’ weekly study time is shown only when allowed by their privacy settings. There is no live study status.</p>
+    </section>
+  );
+
+  const renderLeaderboard = () => (
+    <section className="page-shell">
+      <div className="section-heading">
+        <p className="eyebrow">Social</p>
+        <h1>Study leaderboard</h1>
+        <p>Compare verified study time. Periods follow your local time zone; manual entries are excluded.</p>
+      </div>
+      {loadErrors.leaderboard ? <p className="error-message" role="alert">{loadErrors.leaderboard}</p> : null}
+      <div className="panel leaderboard-controls">
+        <label>
+          <span>Period</span>
+          <select value={leaderboardFilters.period} onChange={(event) => {
+            setSocialLoading(true);
+            setLeaderboard(null);
+            setLeaderboardFilters((current) => ({ ...current, period: event.target.value }));
+          }}>
+            <option value="day">Today</option>
+            <option value="week">This week</option>
+            <option value="month">This month</option>
+          </select>
+        </label>
+        <label>
+          <span>Category</span>
+          <select value={leaderboardFilters.category || user.category} onChange={(event) => {
+            setSocialLoading(true);
+            setLeaderboard(null);
+            setLeaderboardFilters((current) => ({ ...current, category: event.target.value }));
+          }}>
+            <option value="school">School</option>
+            <option value="college">College</option>
+            <option value="competitive_exams">Competitive exams</option>
+            <option value="professional">Professional</option>
+          </select>
+        </label>
+        <label>
+          <span>Who to include</span>
+          <select value={leaderboardFilters.scope} onChange={(event) => {
+            setSocialLoading(true);
+            setLeaderboard(null);
+            setLeaderboardFilters((current) => ({ ...current, scope: event.target.value }));
+          }}>
+            <option value="all">Everyone</option>
+            <option value="friends">Friends only</option>
+          </select>
+        </label>
+      </div>
+
+      {leaderboard?.me ? (
+        <p className="leaderboard-personal-rank" role="status">
+          Your rank: {leaderboard.me.rank ?? '—'} · {formatSeconds(leaderboard.me.seconds || 0)}
+        </p>
+      ) : null}
+      <section className="panel top-gap" aria-label="Leaderboard rankings">
+        <div className="panel-header">
+          <div>
+            <h2>{leaderboardFilters.scope === 'friends' ? 'Friends ranking' : 'Category ranking'}</h2>
+            {leaderboard?.period_start && leaderboard?.period_end ? <p>{leaderboard.period_start} to {leaderboard.period_end}</p> : null}
+          </div>
+        </div>
+        {leaderboard?.entries?.length ? (
+          <ol className="leaderboard-list">
+            {leaderboard.entries.map((entry) => (
+              <li key={entry.user_id} className="leaderboard-row">
+                <span className="leaderboard-rank">{entry.rank}</span>
+                <div><strong>{entry.username}</strong><p>Level {entry.level}</p></div>
+                <strong>{formatSeconds(entry.seconds || 0)}</strong>
+              </li>
+            ))}
+          </ol>
+        ) : loadErrors.leaderboard ? null : <p>{socialLoading ? 'Loading leaderboard…' : 'No ranked study time for this selection yet.'}</p>}
+        {leaderboard && !leaderboard.me ? <p className="social-note">Your profile is not ranked on this board. Check your leaderboard visibility setting and eligible study time.</p> : null}
+      </section>
+    </section>
+  );
+
   const renderSettings = () => (
     <section className="page-shell">
       <div className="section-heading">
@@ -1242,6 +1573,8 @@ function App() {
     exams: renderExams(),
     insights: renderInsights(),
     goals: renderWeeklyGoals(),
+    friends: renderFriends(),
+    leaderboard: renderLeaderboard(),
     settings: renderSettings(),
   };
 
@@ -1262,9 +1595,12 @@ function App() {
             {[
               ['dashboard', 'Dashboard'], ['timer', 'Timer'], ['planner', 'Planner'],
               ['subjects', 'Subjects'], ['statistics', 'Statistics'], ['syllabus', 'Syllabus'],
-              ['exams', 'Exams'], ['insights', 'Insights'], ['goals', 'Weekly goals'], ['settings', 'Settings'],
+              ['exams', 'Exams'], ['insights', 'Insights'], ['goals', 'Weekly goals'],
+              ['friends', 'Friends'], ['leaderboard', 'Leaderboard'], ['settings', 'Settings'],
             ].map(([item, label]) => (
               <button key={item} type="button" aria-current={mode === item ? 'page' : undefined} className={mode === item ? 'nav-button active' : 'nav-button'} onClick={() => {
+                if (mode !== item && (item === 'friends' || item === 'leaderboard')) setSocialLoading(true);
+                if (mode !== item && item === 'leaderboard') setLeaderboard(null);
                 setMode(item);
                 setSuccessMessage('');
                 if (item === 'syllabus' && !syllabusSubjectId && subjects[0]) loadSyllabus(subjects[0].id);
@@ -1282,7 +1618,7 @@ function App() {
       </header>
 
       <main className="app-content">
-        {Object.entries(loadErrors).filter(([key, message]) => Boolean(message) && !['auth', 'settings', 'export', 'subjects', 'timer', 'planner', 'statistics', 'heatmap', 'syllabus', 'exams', 'insights', 'goals'].includes(key)).map(([key, message]) => (
+        {Object.entries(loadErrors).filter(([key, message]) => Boolean(message) && !['auth', 'settings', 'export', 'subjects', 'timer', 'planner', 'statistics', 'heatmap', 'syllabus', 'exams', 'insights', 'goals', 'social', 'friends', 'friendRequests', 'blockedUsers', 'leaderboard'].includes(key)).map(([key, message]) => (
           <p className="error-message" role="alert" key={key}>{key}: {message}</p>
         ))}
         {content[mode]}
