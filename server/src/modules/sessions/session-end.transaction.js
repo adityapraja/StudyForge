@@ -7,13 +7,25 @@ import {
   awardDailyGoalXp,
 } from '../progression/xp.service.js';
 import { updateStreakOnSessionEnd } from '../progression/streak.service.js';
+import { AppError } from '../../middleware/error-handler.js';
+
+const requireValidTimeZone = (timeZone) => {
+  if (!timeZone || !DateTime.now().setZone(timeZone).isValid) {
+    throw new AppError(
+      500,
+      'INVALID_STORED_TIME_ZONE',
+      'The user has an invalid stored time zone.'
+    );
+  }
+  return timeZone;
+};
 
 /**
  * Splits a study session across local calendar days according to the user's time zone.
  * Distributes study_seconds proportionally based on the wall clock time in each day.
  */
 export const splitSessionAcrossDays = (startedAt, endedAt, studySeconds, timeZone) => {
-  const zone = timeZone || 'UTC';
+  const zone = requireValidTimeZone(timeZone);
   const startDt = DateTime.fromJSDate(startedAt, { zone });
   const endDt = DateTime.fromJSDate(endedAt, { zone });
 
@@ -81,7 +93,7 @@ export const splitSessionAcrossDays = (startedAt, endedAt, studySeconds, timeZon
  * All inside a single PostgreSQL transaction.
  */
 export const executeSessionEndTransaction = async (client, user, session, options = {}) => {
-  const zone = user.time_zone || 'UTC';
+  const zone = requireValidTimeZone(user.time_zone);
   const now = options.endedAt || new Date();
 
   // Finalize pause / break stretch if currently paused or on break
@@ -138,8 +150,22 @@ export const executeSessionEndTransaction = async (client, user, session, option
 
   const dailyCapMinutes = config.dailyCapHours * 60;
   let totalCountedSeconds = 0;
+  let leaderboardCreditedSeconds = 0;
+  let accumulatedStudySeconds = 0;
+  const { rows: creditTimeRows } = await client.query(
+    `SELECT clock_timestamp() AS credited_at`
+  );
+  const creditedAt = creditTimeRows[0].credited_at;
 
   for (const seg of daySegments) {
+    const { rows: disqualifiedDayRows } = await client.query(
+      `SELECT 1
+       FROM session_disqualifications
+       WHERE user_id = $1 AND day = $2 AND scope = 'user_day'`,
+      [user.id, seg.day]
+    );
+    const dayDisqualified = disqualifiedDayRows.length > 0;
+
     // Check existing totals for that day
     const { rows: existingRows } = await client.query(
       `SELECT minutes, verified_minutes
@@ -152,9 +178,18 @@ export const executeSessionEndTransaction = async (client, user, session, option
     const existingMinutes = existingRows.length > 0 ? existingRows[0].minutes : 0;
     const availableMinutes = Math.max(0, dailyCapMinutes - existingMinutes);
 
-    const segmentMinutes = Math.floor(seg.studySeconds / 60);
+    const previousWholeMinutes = Math.floor(accumulatedStudySeconds / 60);
+    accumulatedStudySeconds += seg.studySeconds;
+    const segmentMinutes =
+      Math.floor(accumulatedStudySeconds / 60) - previousWholeMinutes;
     const countedMinutes = Math.min(segmentMinutes, availableMinutes);
-    const countedVerified = endedSession.verified ? countedMinutes : 0;
+    const countedVerified = endedSession.verified && !dayDisqualified ? countedMinutes : 0;
+    const creditedMinutes = endedSession.source === 'timer' && countedVerified > 0
+      ? countedVerified
+      : 0;
+    if (creditedMinutes > 0) {
+      leaderboardCreditedSeconds += creditedMinutes * 60;
+    }
 
     totalCountedSeconds += countedMinutes * 60;
 
@@ -181,15 +216,44 @@ export const executeSessionEndTransaction = async (client, user, session, option
          updated_at = NOW()`,
       [user.id, endedSession.subject_id, seg.day, countedMinutes, countedVerified]
     );
+
+    await client.query(
+      `INSERT INTO session_day_credits
+         (session_id, user_id, day, original_verified_minutes,
+          verified_minutes, original_leaderboard_credited_seconds,
+          leaderboard_credited_seconds, credited_at)
+       VALUES ($1, $2, $3, $4, $4, $5, $5, $6)`,
+      [
+        endedSession.id,
+        user.id,
+        seg.day,
+        creditedMinutes,
+        creditedMinutes * 60,
+        creditedMinutes > 0 ? creditedAt : null,
+      ]
+    );
   }
+
+  await client.query(
+    `UPDATE sessions
+     SET leaderboard_credited_seconds = $1,
+         leaderboard_credited_at = CASE WHEN $1 > 0 THEN $3::timestamptz ELSE NULL END
+     WHERE id = $2`,
+    [leaderboardCreditedSeconds, endedSession.id, creditedAt]
+  );
 
   // Phase 2: Award XP (only for verified sessions, capped at 4 hours)
   let sessionXp = 0;
   let bonusXp = 0;
   let dailyGoalMet = false;
 
-  if (endedSession.verified) {
-    const endDay = DateTime.fromJSDate(effectiveEndedAt, { zone }).toISODate();
+  const endDay = DateTime.fromJSDate(effectiveEndedAt, { zone }).toISODate();
+  const { rows: endDayDisqualificationRows } = await client.query(
+    `SELECT 1 FROM session_disqualifications
+     WHERE user_id = $1 AND day = $2 AND scope = 'user_day'`,
+    [user.id, endDay]
+  );
+  if (endedSession.verified && endDayDisqualificationRows.length === 0) {
     const sessionXpResult = await awardSessionXp(
       client,
       user.id,

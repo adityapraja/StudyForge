@@ -115,6 +115,21 @@ describe('Auth Module', () => {
       expect(res.body.error.code).toBe('VALIDATION_ERROR');
       expect(res.body.error.fields.password).toBeDefined();
     });
+
+    it('rejects invalid time-zone identifiers', async () => {
+      const res = await request(app)
+        .post('/api/auth/register')
+        .send({
+          email: 'invalid-zone@example.com',
+          password: 'password123',
+          username: 'invalidzone',
+          time_zone: 'Not/A_Real_Zone',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(res.body.error.fields.time_zone).toBeDefined();
+    });
   });
 
   describe('POST /api/auth/login', () => {
@@ -197,4 +212,3 @@ describe('Auth Module', () => {
     });
   });
 });
-

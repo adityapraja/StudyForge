@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { timeZoneSchema } from '../auth/auth.schemas.js';
 
 export const patchMeSchema = z.object({
   username: z
@@ -7,7 +8,7 @@ export const patchMeSchema = z.object({
     .max(20, 'Username must be at most 20 characters')
     .regex(/^[a-zA-Z0-9_]+$/, 'Username must contain only letters, numbers, and underscores')
     .optional(),
-  time_zone: z.string().optional(),
+  time_zone: timeZoneSchema.optional(),
   category: z.enum(['school', 'college', 'competitive_exams', 'professional']).optional(),
   leaderboard_hidden: z.boolean().optional(),
   privacy: z
@@ -48,4 +49,3 @@ export const xpEventsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional().default(50),
   cursor: z.string().optional(),
 });
-

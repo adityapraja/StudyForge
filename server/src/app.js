@@ -14,6 +14,8 @@ import plannerRoutes from './modules/planner/planner.routes.js';
 import statsRoutes from './modules/stats/stats.routes.js';
 import syllabusRoutes from './modules/syllabus/syllabus.routes.js';
 import examsRoutes from './modules/exams/exams.routes.js';
+import friendsRoutes, { blocksRouter } from './modules/friends/friends.routes.js';
+import leaderboardsRoutes from './modules/leaderboards/leaderboards.routes.js';
 
 export const createApp = () => {
   const app = express();
@@ -43,6 +45,9 @@ export const createApp = () => {
   app.use('/api/me', usersRoutes);
   app.use('/api', syllabusRoutes);
   app.use('/api/exams', examsRoutes);
+  app.use('/api/friends', friendsRoutes);
+  app.use('/api', blocksRouter);
+  app.use('/api/leaderboards', leaderboardsRoutes);
   app.use('/api/subjects', subjectsRoutes);
   app.use('/api/sessions', sessionsRoutes);
   app.use('/api/planner', plannerRoutes);

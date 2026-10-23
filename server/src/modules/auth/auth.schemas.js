@@ -1,4 +1,10 @@
 import { z } from 'zod';
+import { DateTime } from 'luxon';
+
+export const timeZoneSchema = z.string().refine(
+  (timeZone) => DateTime.now().setZone(timeZone).isValid,
+  'Invalid time zone'
+);
 
 export const registerSchema = z.object({
   email: z.string().email('Invalid email address').transform((val) => val.toLowerCase().trim()),
@@ -8,7 +14,7 @@ export const registerSchema = z.object({
     .min(3, 'Username must be at least 3 characters')
     .max(20, 'Username must be at most 20 characters')
     .regex(/^[a-zA-Z0-9_]+$/, 'Username must contain only letters, numbers, and underscores'),
-  time_zone: z.string().optional().default('UTC'),
+  time_zone: timeZoneSchema.optional().default('UTC'),
   category: z
     .enum(['school', 'college', 'competitive_exams', 'professional'])
     .optional()
@@ -19,4 +25,3 @@ export const loginSchema = z.object({
   email: z.string().email('Invalid email address').transform((val) => val.toLowerCase().trim()),
   password: z.string().min(1, 'Password is required'),
 });
-
