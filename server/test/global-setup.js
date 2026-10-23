@@ -45,7 +45,7 @@ const cleanLocks = (pgData, socketDir) => {
 export async function setup() {
   // Prefer a dedicated local test URL; CI supplies DATABASE_URL for its test service.
   const existingUrl = process.env.TEST_DATABASE_URL
-    || ((process.platform !== 'win32' || process.env.CI) ? process.env.DATABASE_URL : null);
+    || (process.env.CI ? process.env.DATABASE_URL : null);
   if (existingUrl) {
     let target;
     try {
