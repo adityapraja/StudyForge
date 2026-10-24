@@ -12,6 +12,7 @@ import FriendsPage from './components/FriendsPage.jsx';
 import LeaderboardPage from './components/LeaderboardPage.jsx';
 import SettingsPage from './components/SettingsPage.jsx';
 import AuthPage from './components/AuthPage.jsx';
+import DotGrid from './components/DotGrid.jsx';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -802,7 +803,21 @@ function App() {
 
   return (
     <div className="app-shell">
-      <div className="page-bg" />
+      <div className="page-bg">
+        <DotGrid
+          baseColor="#ebebeb"
+          activeColor="#0a0a0a"
+          shape="circle"
+          dotSize={3}
+          gap={26}
+          proximity={120}
+          shockRadius={260}
+          shockStrength={4}
+          returnDuration={0.8}
+          glow={0.2}
+          opacity={0.5}
+        />
+      </div>
       <header className="topbar">
         <div className="topbar-inner">
           <div className="brand-block">

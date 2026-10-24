@@ -804,6 +804,25 @@ Test Files  19 passed (19)
      - Authored end-to-end containerization manual with Mermaid network diagrams, single-command launch instructions, database backups/restores, running tests inside containers, and VPS cloud deployment guide.
 - **Why:** Enables developers and devops engineers to spin up the entire application stack reproducibly with a single command across any environment.
 
+---
+
+## 17. Interactive DotGrid Integration from React Bits
+
+**Date:** Oct 24, 2026  
+**Change:**
+- Integrated the open-source `<DotGrid />` WebGL2 interactive particle canvas component from React Bits into the frontend:
+  1. **Component Files:**
+     - Created [`client/src/components/DotGrid.jsx`](../client/src/components/DotGrid.jsx): High-performance WebGL2 shader component with spring physics, cursor proximity deformation, shockwaves on click, and energy glow.
+     - Created [`client/src/components/DotGrid.css`](../client/src/components/DotGrid.css): Sizing and positioning rules with `pointer-events: none` on the canvas.
+  2. **Application Integration:**
+     - **Auth Page ([`client/src/components/AuthPage.jsx`](../client/src/components/AuthPage.jsx)):** Integrated as a full-viewport interactive background behind the login/register card (`baseColor="#e0e0e0"`, `activeColor="#0a0a0a"`), reacting dynamically to mouse movement and clicks.
+     - **App Shell ([`client/src/App.jsx`](../client/src/App.jsx)):** Integrated into `.page-bg` with subtle opacity (`0.5`) across all 11 application views.
+     - **Styles ([`client/src/index.css`](../client/src/index.css)):** Added `.auth-bg` and layered `.auth-card` with proper z-indexes to allow global pointer events to trigger canvas physics without blocking button/input clicks.
+  3. **Verification:**
+     - `npm --prefix client run build`: Built cleanly in ~380ms (zero bundle or syntax errors).
+- **Why:** Elevates the visual polish and interactivity of StudyForge with modern WebGL physics while adhering to the minimalist monochrome aesthetic.
+
+
 
 
 

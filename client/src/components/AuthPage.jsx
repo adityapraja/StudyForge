@@ -1,6 +1,23 @@
+import DotGrid from './DotGrid.jsx';
+
 export default function AuthPage({ authMode, setAuthMode, loadErrors, formError, handleAuthSubmit }) {
   return (
       <div className="auth-shell">
+        <div className="auth-bg">
+          <DotGrid
+            baseColor="#e0e0e0"
+            activeColor="#0a0a0a"
+            shape="circle"
+            dotSize={4}
+            gap={22}
+            proximity={140}
+            shockRadius={320}
+            shockStrength={5}
+            returnDuration={0.8}
+            glow={0.3}
+            opacity={0.85}
+          />
+        </div>
         <div className="auth-card">
           <div className="auth-header">
             <img src="/studyforge.svg" alt="StudyForge Logo" className="auth-logo" width="44" height="44" />
