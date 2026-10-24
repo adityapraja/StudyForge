@@ -4,12 +4,19 @@
 
 # StudyForge — Modern Study Habit Tracker
 
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-study--forge--khaki.vercel.app-000000.svg?style=flat&logo=vercel)](https://study-forge-khaki.vercel.app/)
 [![CI Test Suite](https://github.com/adityapraja/StudyForge/actions/workflows/ci.yml/badge.svg)](https://github.com/adityapraja/StudyForge/actions/workflows/ci.yml)
 [![Node Version](https://img.shields.io/badge/Node.js-v20%20%7C%20v22+-green.svg)](https://nodejs.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue.svg)](https://www.postgresql.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
 [![Express](https://img.shields.io/badge/Express-5.0-black.svg)](https://expressjs.com/)
 [![Tests](https://img.shields.io/badge/Tests-124%20passed%20(100%25)-brightgreen.svg)](server/test/)
+
+> [!TIP]
+> 🚀 **Live Production Application:** [https://study-forge-khaki.vercel.app/](https://study-forge-khaki.vercel.app/)  
+> - **Frontend (Vercel):** [study-forge-khaki.vercel.app](https://study-forge-khaki.vercel.app/) (React 19 SPA on Edge CDN)
+> - **Backend API (Render):** [studyforge-api-euwp.onrender.com](https://studyforge-api-euwp.onrender.com) (Node.js & Express 5)
+> - **Database (Neon):** Cloud PostgreSQL 16 serverless database with native SSL
 
 **StudyForge** is a full-stack, honesty-first study habit tracker and motivation platform designed for students, competitive exam aspirants, and lifelong learners. Built with Node.js/Express 5, PostgreSQL, and React 19 (Vite).
 
@@ -21,11 +28,11 @@ Unlike generic habit trackers that rely on client timers, StudyForge enforces **
 
 ```mermaid
 graph TD
-    Client["React 19 SPA (Vite · Port 5173)"]
-    API["Express 5 REST API (Port 3000)"]
-    DB[("PostgreSQL 16 (Docker · Port 5434)")]
+    Client["React 19 SPA<br/>(Vercel · study-forge-khaki.vercel.app)"]
+    API["Express 5 REST API<br/>(Render · studyforge-api-euwp.onrender.com)"]
+    DB[("PostgreSQL 16<br/>(Neon Serverless Cloud)")]
 
-    Client -->|HTTP / JSON with httpOnly JWT| API
+    Client -->|HTTPS / JSON with httpOnly JWT| API
     API -->|Connection Pool & Atomic Transactions| DB
 
     subgraph Core Features
@@ -111,6 +118,7 @@ StudyForge/
 ├── docker-compose.yml          # PostgreSQL 16 Alpine container configuration
 ├── package.json                # Monorepo scripts (dev, test, client, docker)
 ├── SETUP.md                    # Detailed local machine setup guide
+├── DEPLOYMENT.md               # Cloud production deployment guide (Vercel + Render + Neon)
 ├── BACKEND_AND_DATAFLOW.md     # Backend architecture, dataflows & API reference
 └── personb_memory.md           # Engineering log & architectural decision record
 ```
@@ -118,6 +126,10 @@ StudyForge/
 ---
 
 ## Quickstart Guide
+
+> [!NOTE]
+> To test the application without any local setup, open the live version at **[https://study-forge-khaki.vercel.app/](https://study-forge-khaki.vercel.app/)**.  
+> To run or contribute locally, follow the steps below:
 
 ### 1. Prerequisites
 - **Node.js**: `v20.x` or `v22.x+`

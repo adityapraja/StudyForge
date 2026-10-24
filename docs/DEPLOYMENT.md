@@ -73,17 +73,17 @@ flowchart LR
    | `PORT` | `3000` | Render injects `PORT` automatically if omitted |
    | `DATABASE_URL` | `postgresql://...neon.tech/neondb?sslmode=require` | Paste your Neon connection string from Step 1 |
    | `JWT_SECRET` | `your-secure-random-secret-at-least-32-chars-long` | Generate a strong random key |
-   | `CLIENT_URL` | `https://your-studyforge.vercel.app` | Will be your Vercel frontend URL (you can update this after Step 3) |
+   | `CLIENT_URL` | `https://study-forge-khaki.vercel.app` | Your Vercel frontend production URL |
    | `AUTO_INIT_DB` | `true` | **Crucial:** Automatically creates all tables and runs schema migrations on first startup! |
-   | `COOKIE_SAME_SITE` | `lax` | Use `lax` if using Vercel proxy (Option A), or `none` if calling cross-origin (Option B) |
+   | `COOKIE_SAME_SITE` | `lax` | Use `lax` when using Vercel proxy (Option A), or `none` if calling cross-origin (Option B) |
 
 6. Click **Deploy Web Service**.
-7. Wait 2-3 minutes for the build to finish. Once live, Render will provide your public URL:
+7. Wait 2-3 minutes for the build to finish. Once live, Render provides your public URL:
    ```text
-   https://studyforge-api.onrender.com
+   https://studyforge-api-euwp.onrender.com
    ```
 8. **Verify Backend Health:**
-   Open `https://studyforge-api.onrender.com/healthz` in your browser. It should return:
+   Open `https://studyforge-api-euwp.onrender.com/healthz` in your browser. It should return:
    ```json
    {"ok":true}
    ```
@@ -107,7 +107,7 @@ You have two options for connecting the frontend to your backend:
      "rewrites": [
        {
          "source": "/api/:path*",
-         "destination": "https://studyforge-api.onrender.com/api/:path*"
+         "destination": "https://studyforge-api-euwp.onrender.com/api/:path*"
        },
        {
          "source": "/(.*)",
@@ -116,7 +116,7 @@ You have two options for connecting the frontend to your backend:
      ]
    }
    ```
-   *(Replace `https://studyforge-api.onrender.com` with your actual Render service URL).*
+   *(See [`client/vercel.json`](client/vercel.json) already configured in the repo).*
 
 2. Commit and push:
    ```bash
@@ -133,13 +133,13 @@ You have two options for connecting the frontend to your backend:
    - **Build Command:** `npm run build` (default)
    - **Output Directory:** `dist` (default)
 6. Click **Deploy**.
-7. Vercel will build and assign you a free production URL:
+7. Vercel builds and assigns the live production URL:
    ```text
-   https://studyforge-yourname.vercel.app
+   https://study-forge-khaki.vercel.app/
    ```
-8. **Final Step:** Go back to Render > `studyforge-api` > **Environment Variables**, and ensure `CLIENT_URL` is set to your new Vercel domain:
+8. **Final Step:** Go back to Render > `studyforge-api-euwp` > **Environment Variables**, and confirm `CLIENT_URL` is set to:
    ```text
-   CLIENT_URL=https://studyforge-yourname.vercel.app
+   CLIENT_URL=https://study-forge-khaki.vercel.app
    ```
 
 ---

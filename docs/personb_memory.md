@@ -758,6 +758,27 @@ Test Files  19 passed (19)
   - `npm --prefix server test`: All 19 test files (124 tests) passed cleanly (100%).
 - **Why:** Delivers a production-ready deployment pathway with zero ongoing hosting costs, rock-solid security, and automated database bootstrapping.
 
+---
+
+## 15. Production Deployment Live Verification (`README.md` & `DEPLOYMENT.md`)
+
+**Date:** Oct 24, 2026  
+**Change:**
+- Verified live production deployment and updated documentation:
+  1. **Live Production URLs:**
+     - **Frontend:** `https://study-forge-khaki.vercel.app/` (Hosted on Vercel Edge CDN)
+     - **Backend API:** `https://studyforge-api-euwp.onrender.com` (Express 5 Web Service on Render)
+     - **Database:** Neon serverless PostgreSQL 16
+  2. **README.md:**
+     - Added prominent Vercel Live Demo badge at the top of [`README.md`](README.md).
+     - Added live application callout box linking to the production application.
+     - Updated Mermaid system architecture diagram to display production domains alongside local dev ports.
+     - Added quick link in Quickstart guide allowing readers to immediately test the live app without local installation.
+  3. **DEPLOYMENT.md:**
+     - Updated step-by-step documentation and configuration tables with authoritative production URLs.
+- **Why:** Fulfills the final deployment milestone, making StudyForge publicly accessible and clearly documented for all users and evaluators.
+
+
 
 
 
