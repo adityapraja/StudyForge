@@ -4,7 +4,7 @@
 
 # StudyForge — Modern Study Habit Tracker
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-study--forge--khaki.vercel.app-000000.svg?style=flat&logo=vercel)](https://study-forge-khaki.vercel.app/)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-study--forge--khaki.vercel.app-000000.svg?style=flat)](https://study-forge-khaki.vercel.app/)
 [![CI Test Suite](https://github.com/adityapraja/StudyForge/actions/workflows/ci.yml/badge.svg)](https://github.com/adityapraja/StudyForge/actions/workflows/ci.yml)
 [![Node Version](https://img.shields.io/badge/Node.js-v20%20%7C%20v22+-green.svg)](https://nodejs.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue.svg)](https://www.postgresql.org/)
@@ -12,159 +12,199 @@
 [![Express](https://img.shields.io/badge/Express-5.0-black.svg)](https://expressjs.com/)
 [![Tests](https://img.shields.io/badge/Tests-124%20passed%20(100%25)-brightgreen.svg)](server/test/)
 
+---
+
+## What is StudyForge?
+
+**StudyForge** is a full-stack, honesty-first study habit tracker and academic productivity platform designed for students, competitive exam aspirants, and lifelong learners.
+
+Unlike generic productivity apps that rely on client-side timers or easily manipulated manual entries, StudyForge enforces **server clock authority**, **hard anti-cheat caps**, and **real-time on-demand leaderboards**. StudyForge distinguishes between verified real-time study sessions and unverified manual entries, ensuring that leaderboards and XP progression reflect genuine, dedicated focus.
+
+Whether preparing for high-stakes exams, managing university coursework, or building daily reading habits, StudyForge combines structured daily planning, syllabus completion tracking, gamified streaks, and peer accountability to keep you consistent.
+
+---
+
+## Live Application
+
 > [!TIP]
-> 🚀 **Live Production Application:** [https://study-forge-khaki.vercel.app/](https://study-forge-khaki.vercel.app/)  
-> - **Frontend (Vercel):** [study-forge-khaki.vercel.app](https://study-forge-khaki.vercel.app/) (React 19 SPA on Edge CDN)
-> - **Backend API (Render):** [studyforge-api-euwp.onrender.com](https://studyforge-api-euwp.onrender.com) (Node.js & Express 5)
-> - **Database (Neon):** Cloud PostgreSQL 16 serverless database with native SSL
-
-**StudyForge** is a full-stack, honesty-first study habit tracker and motivation platform designed for students, competitive exam aspirants, and lifelong learners. Built with Node.js/Express 5, PostgreSQL, and React 19 (Vite).
-
-Unlike generic habit trackers that rely on client timers, StudyForge enforces **server clock authority**, **atomic rollups**, **anti-cheat limits**, and **real-time on-demand leaderboards** where manual unverified time cannot be used to game rankings.
+> 🚀 **Access the deployed application here:**  
+> **[https://study-forge-khaki.vercel.app/](https://study-forge-khaki.vercel.app/)**  
+> *No local installation required — create an account and start tracking immediately.*
 
 ---
 
-## Architecture at a Glance
+## Core Features
 
-```mermaid
-graph TD
-    Client["React 19 SPA<br/>(Vercel · study-forge-khaki.vercel.app)"]
-    API["Express 5 REST API<br/>(Render · studyforge-api-euwp.onrender.com)"]
-    DB[("PostgreSQL 16<br/>(Neon Serverless Cloud)")]
+### ⏱️ Real-Time Focus Timer & Session Recovery
+- **Server Clock Authority:** Session start and stop timestamps are anchored by the server clock, preventing client-side clock tampering.
+- **Active Session Recovery:** Re-hydrates in-progress sessions automatically across browser refreshes (`F5`), closed tabs, and network disconnects.
+- **Controls & Short Breaks:** Pause and resume controls with break-time exclusions to accurately capture pure study seconds.
+- **Timezone-Aware Midnight Splitting:** Long sessions crossing midnight are cleanly partitioned into their respective local calendar days based on the user's specific IANA timezone.
 
-    Client -->|HTTPS / JSON with httpOnly JWT| API
-    API -->|Connection Pool & Atomic Transactions| DB
+### 🛡️ Honesty-First Anti-Cheat & Fair Play
+- **Verified vs. Unverified Sessions:** Real-time timer sessions are marked `verified: true`. Manual retroactive entries are flagged as `verified: false`, earn 0 XP, and are strictly excluded from competitive leaderboards.
+- **Hard Duration Caps:** Enforces a 16-hour daily study cap on daily totals and a 12-hour maximum cap on individual sessions.
+- **Session XP Cap:** Limits XP gains to a maximum of 4 hours (240 XP) per session to eliminate idle farming.
+- **Overlap Prevention:** Concurrent and overlapping sessions are rejected with HTTP 409 `SESSION_OVERLAP`.
+- **Audit & Disqualification Engine:** Background audit queries detect cap saturation, abnormal volume, and data drift, with an atomic disqualification service to revoke illicit credits without caching lag.
 
-    subgraph Core Features
-        API --> Timer["Timer Engine & Active Session Recovery"]
-        API --> Progression["XP Curve & Automatic Streaks"]
-        API --> AntiCheat["Anti-Cheat Caps (16h Daily, 4h XP)"]
-        API --> Planner["Daily Planner & Idempotent Carry-Over"]
-        API --> Social["Social Graph & Live Leaderboards"]
-    end
-```
+### 🎮 Progression & Gamification
+- **Monotonic Leveling Curve:** Balanced RPG-style XP progression where Level 1 requires 200 XP, scaling smoothly by $200 + (L-1) \times 50$ XP for subsequent levels.
+- **Daily Streak Engine:** Calculates active daily streaks with an automated weekly streak freeze safeguard to forgive occasional missed days.
+- **Milestone Bonuses:**
+  - **Daily Goal Bonus:** +50 XP on hitting the verified daily study target (idempotent; at most once per calendar day).
+  - **Topic Completion Bonus:** +20 XP awarded when marking a syllabus topic as completed.
+
+### 📋 Daily Planner & Task Management
+- **Top 3 Daily Goals:** Set primary focus objectives for each day.
+- **Checklists & Task Carry-Over:** Create task checklists with status updates (`todo`, `in_progress`, `done`). Incomplete tasks automatically carry over to the next day without duplicates.
+- **End-of-Day Review:** Review planned vs. achieved metrics to reflect on daily productivity.
+
+### 📚 Syllabus Tracking & Exam Countdown
+- **Hierarchical Syllabus Tree:** Organize subjects into modular topics and subtopics with completion toggles and progress percentages.
+- **Exam Countdown & Study Pace:** Track exam dates with real-time countdown chips (`X days left`) and dynamically computed required study hours per day.
+
+### 📊 Analytics, Heatmap & Insights
+- **Yearly Contribution Heatmap:** Visual GitHub-style 365-day study activity grid.
+- **Subject Distribution:** Visual breakdown of study time across subjects.
+- **Deterministic Rule-Based Insights:** Data-driven alerts highlighting `burnout_risk`, `subject_neglect`, `best_time`, and `streak_at_risk` with concrete source numbers.
+
+### 👥 Social Graph & Competitive Leaderboards
+- **Friends System:** Send, accept, or decline friend requests by username. View friends' level, active streak, and weekly study hours.
+- **Bidirectional Blocking & Privacy:** Mutual blocking breaks friendships and hides users across leaderboards and searches.
+- **Live Leaderboards:** Dynamically queried rankings over verified study minutes across Day, Week, and Month periods.
+- **Leaderboard Filters:** Filter standings by academic category (`school`, `college`, `competitive_exams`, `professional`) or view friends-only rankings.
+- **Leaderboard Opt-Out:** Option to opt out of public rankings at any time.
+
+### 🔒 Data Privacy & Export
+- **Streaming CSV Export:** Instant download of all historical study sessions in standard CSV format.
+- **Account Deletion:** Clean cascading deletion of all user data and session history.
 
 ---
 
-## Key Features
+## Tech Stack
 
-### Phase 1 — Tracker Core
-- **Focus Timer & Stopwatch:** Real-time clock with pause, short break, and resume controls. Start/stop timestamps are anchored by the server clock.
-- **Active Session Recovery:** Re-hydrates open sessions on page refresh (`F5`) or tab restore without losing state.
-- **Subjects CRUD:** Color-coded focus subjects with hex color validation and user isolation.
-- **Timezone-Aware Midnight Splitting:** Sessions spanning midnight are split into their respective local calendar days in the user's specific IANA timezone.
-- **Daily Planner:** 3 daily focus goals, task checklists with status updates, review metrics, and duplicate-proof task carry-over.
-- **Annual Heatmap & CSV Export:** GitHub-style yearly contribution heatmap and streaming CSV export of all sessions.
-
-### Phase 2 — Progression Engine
-- **Progression & XP Curve:** Monotonic progression formula: Level 1 requires 200 XP; each subsequent level requires $200 + (L-1) \times 50$ XP.
-- **Daily Goal Bonus:** 50 XP awarded when daily target is met in verified study time (idempotent at most once per calendar day).
-- **Syllabus Topic Completion Bonus:** 20 XP awarded when a syllabus topic is marked `done` (idempotent; no duplicate awards on status toggles).
-- **Exams Module:** Target hours tracking with dynamic countdown chips (`X days left`).
-- **Deterministic Insights:** Rule-based analytics computing `burnout_risk`, `subject_neglect`, `best_time`, and `streak_at_risk` with concrete source numbers.
-- **Weekly Goals Grid:** Visual 7-day Monday–Sunday progress tracking with target completion markers.
-
-### Phase 3 — Social & Anti-Cheat
-- **Friends Module:** Send/accept/decline requests by username, view friends' level, streak, and weekly focus hours.
-- **Bidirectional Blocking:** Blocking breaks friendships and hides users mutually across all screens, searches, and leaderboards.
-- **Live Leaderboards:** Dynamic SQL calculation over `daily_totals.verified_minutes` across day, week, and month periods, with category and friends-only filters.
-- **Hard Anti-Cheat Caps (Gate 2):**
-  - Manual entries marked `verified: false`, earn 0 XP, and are strictly excluded from leaderboards.
-  - 16-hour daily study cap on `daily_totals` and 12-hour session duration limit.
-  - 4-hour (240 XP) session XP cap.
-  - Overlapping sessions rejected with 409 `SESSION_OVERLAP`.
-- **Nightly Audit Queries (`audit.service.js`):** Queries to detect cap saturation, abnormal volume, and session-to-totals data drift.
-- **Atomic Disqualification Service:** Revokes invalid sessions or user-days with instant leaderboard recalculation without cache lag.
+| Layer | Technology | Version | Purpose |
+| :--- | :--- | :--- | :--- |
+| **Frontend** | React | 19.x | Component-based Single Page Application (SPA) |
+| **Build Tool** | Vite | 8.x | High-performance bundling and local dev server |
+| **Styling** | Vanilla CSS | Modern CSS | Minimalist monochrome design system with CSS custom properties |
+| **Backend** | Node.js / Express | Node 20/22 · Express 5.0 | RESTful API, server clock authority, session transactions |
+| **Database** | PostgreSQL | 16.x | ACID-compliant relational storage, check constraints, schema migrations |
+| **Authentication** | JWT & Cookies | httpOnly | Secure, tamper-proof session tokens with strict CORS boundaries |
+| **Validation** | Zod | 4.x | Strict schema validation for request payloads |
+| **Security** | Helmet & Rate Limit | Modern | HTTP headers hardening and brute-force protection |
+| **Testing** | Vitest & Supertest | 5.x | Automated integration and regression test suites (124 tests) |
 
 ---
 
 ## Project Structure
 
+StudyForge is organized as a lightweight monorepo separating client and server:
+
 ```text
 StudyForge/
 ├── client/                     # Frontend React 19 Application (Vite)
+│   ├── public/                 # Static assets (studyforge.svg, favicon)
 │   ├── src/
-│   │   ├── App.jsx             # Main SPA shell (11 navigation views)
-│   │   ├── main.jsx            # React root mount
-│   │   └── App.css             # Theme, responsive layout & components
+│   │   ├── components/         # Modular views (AuthPage, Dashboard, Planner, etc.)
+│   │   ├── App.jsx             # Main application shell & view routing
+│   │   ├── App.css             # Component-specific styles
+│   │   ├── index.css           # Global design system & theme variables
+│   │   └── main.jsx            # Application entry point
 │   ├── package.json
-│   └── vite.config.js          # Dev server with /api proxy to backend
+│   ├── vercel.json             # Vercel deployment & API proxy configuration
+│   └── vite.config.js          # Vite config with local development proxy
 │
 ├── server/                     # Backend Express 5 REST API
 │   ├── src/
-│   │   ├── app.js              # Express app, security middleware & router mounts
-│   │   ├── server.js           # Server bootstrap, DB connectivity & shutdown
-│   │   ├── db.js               # PostgreSQL pool & withTransaction helper
-│   │   ├── config.js           # Environment parsing & anti-cheat defaults
-│   │   ├── middleware/         # Auth, validation, error handler, rate limiters
+│   │   ├── app.js              # Express app initialization, middleware & routes
+│   │   ├── server.js           # Server entry point, DB handshake & graceful shutdown
+│   │   ├── db.js               # PostgreSQL pool & transaction helper (withTransaction)
+│   │   ├── db-setup.js         # Standalone database initialization script
+│   │   ├── config.js           # Environment parsing & configurable limit defaults
+│   │   ├── middleware/         # Auth, validation, rate limiting & error handling
 │   │   └── modules/
-│   │       ├── auth/           # Register, login, logout, password hashing
-│   │       ├── users/          # Profile, privacy JSONB, weekly goals endpoints
-│   │       ├── subjects/       # Subject CRUD and validation
-│   │       ├── sessions/       # Timer state machine & session-end transaction
-│   │       ├── progression/    # XP curve, streaks, audit & disqualification
-│   │       ├── planner/        # Daily goals, tasks, carry-over
-│   │       ├── syllabus/       # Topic tree hierarchy & 20 XP bonus hook
-│   │       ├── exams/          # Exam countdowns and targets
-│   │       ├── stats/          # Heatmap, progress charts, deterministic insights
-│   │       ├── friends/        # Friend requests, friends list, blocking
-│   │       ├── leaderboards/   # Dynamic SQL ranking queries
-│   │       └── export/         # Session history CSV streaming
+│   │       ├── auth/           # Registration, login, logout & bcrypt hashing
+│   │       ├── users/          # Profiles, goals, privacy settings & streak maintenance
+│   │       ├── subjects/       # Color-coded subject CRUD
+│   │       ├── sessions/       # Timer engine, midnight splitting & anti-cheat finalization
+│   │       ├── planner/        # Daily goals, checklists & task carry-over
+│   │       ├── syllabus/       # Syllabus topic trees & completion bonuses
+│   │       ├── exams/          # Exam countdowns & pace calculations
+│   │       ├── stats/          # Annual heatmap & deterministic insights
+│   │       ├── friends/        # Friend requests, friends list & bidirectional blocking
+│   │       ├── leaderboards/   # Dynamic SQL ranking queries with category filters
+│   │       └── export/         # Streaming CSV session history export
 │   ├── migrations/             # Ordered SQL migrations (001 to 004)
-│   ├── schema.sql              # Base database schema
-│   ├── test/                   # 19 Vitest test suites (124 tests)
+│   ├── schema.sql              # Base database schema with constraints
+│   ├── test/                   # 19 Vitest test suites (124 automated tests)
 │   └── package.json
 │
-├── docker-compose.yml          # PostgreSQL 16 Alpine container configuration
-├── package.json                # Monorepo scripts (dev, test, client, docker)
-├── SETUP.md                    # Detailed local machine setup guide
-├── DEPLOYMENT.md               # Cloud production deployment guide (Vercel + Render + Neon)
-├── BACKEND_AND_DATAFLOW.md     # Backend architecture, dataflows & API reference
-└── personb_memory.md           # Engineering log & architectural decision record
+├── docker-compose.yml          # Local PostgreSQL 16 Alpine container configuration
+├── package.json                # Monorepo management scripts
+├── SETUP.md                    # In-depth local setup and troubleshooting guide
+├── BACKEND_AND_DATAFLOW.md     # In-depth backend architecture and REST API specification
+└── docs/                       # Project documentation, execution logs & deployment guides
 ```
 
 ---
 
-## Quickstart Guide
+## How to Install and Run Locally
 
-> [!NOTE]
-> To test the application without any local setup, open the live version at **[https://study-forge-khaki.vercel.app/](https://study-forge-khaki.vercel.app/)**.  
-> To run or contribute locally, follow the steps below:
+Follow these step-by-step instructions to run StudyForge on your local machine:
 
 ### 1. Prerequisites
-- **Node.js**: `v20.x` or `v22.x+`
-- **Docker & Docker Compose** (or local PostgreSQL 16)
-- **npm**: `v10.x+`
+- **Node.js**: `v20.x` or `v22.x+` ([Download Node.js](https://nodejs.org/))
+- **Docker & Docker Compose** (or a local PostgreSQL 16 installation)
+- **Git** and **npm** (`v10.x+`)
 
-### 2. Install Dependencies
+### 2. Clone the Repository
 ```bash
-# Backend dependencies
+git clone https://github.com/adityapraja/StudyForge.git
+cd StudyForge
+```
+
+### 3. Install Dependencies
+Install dependencies for both backend and frontend:
+```bash
+# Install backend dependencies
 npm --prefix server install
 
-# Frontend dependencies
+# Install frontend dependencies
 npm --prefix client install
 ```
 
-### 3. Environment Configuration
-Copy the default environment files:
+### 4. Configure Environment Variables
+Copy the provided `.env.example` templates:
 ```bash
 cp .env.example .env
 cp server/.env.example server/.env
 ```
 
-Ensure `DATABASE_URL` in both `.env` and `server/.env` points to port `5434`:
+Ensure `DATABASE_URL` in `server/.env` points to the local Docker PostgreSQL instance:
 ```env
+PORT=3000
+NODE_ENV=development
 DATABASE_URL=postgres://postgres:postgres@localhost:5434/tracker
+JWT_SECRET=study-forge-development-secret-key-min-32-chars
+CLIENT_URL=http://localhost:5173
 ```
 
-### 4. Start PostgreSQL (Docker)
+### 5. Start the PostgreSQL Database
+Start the PostgreSQL 16 container using Docker Compose:
 ```bash
 docker compose up -d
-# or using the npm shortcut:
+# or using the monorepo npm script:
 npm run docker:up
 ```
 
-### 5. Run the Application
+Initialize the database schema and migrations:
+```bash
+npm run db:setup
+```
+
+### 6. Start the Development Servers
 Open two terminal windows:
 
 ```bash
@@ -175,16 +215,16 @@ npm run dev
 npm run client:dev
 ```
 
-Open **`http://localhost:5173`** in your browser.
+Open your browser and navigate to **`http://localhost:5173`**.
 
 ---
 
 ## Running Automated Tests
 
-StudyForge includes a comprehensive test suite of **124 automated integration and unit tests across 19 test files**:
+StudyForge includes an exhaustive automated test suite with **124 tests across 19 test files**:
 
 ```bash
-# Run server test suite
+# Run backend test suite
 npm test
 # or: npm --prefix server test
 ```
@@ -212,36 +252,36 @@ npm test
 
 Test Files  19 passed (19)
      Tests  124 passed (124)
-  Duration  41.20s
 ```
 
 ---
 
-## Monorepo NPM Scripts
+## Monorepo NPM Scripts Reference
 
-| Script | Purpose |
+From the root directory, you can run the following commands:
+
+| Command | Description |
 | :--- | :--- |
 | `npm run dev` | Starts Express backend in development mode with `--watch` (`localhost:3000`) |
-| `npm run client:dev` | Starts Vite frontend dev server with hot module reload (`localhost:5173`) |
+| `npm run client:dev` | Starts Vite frontend dev server with Hot Module Reload (`localhost:5173`) |
 | `npm run client:build` | Compiles production client bundle into `client/dist/` |
 | `npm run db:setup` | Initializes schema and migrations on target database (`DATABASE_URL`) |
-| `npm test` | Runs all 19 Vitest test suites (124 tests) against isolated test cluster |
-| `npm run docker:up` | Spawns the PostgreSQL 16 container in background |
+| `npm test` | Runs the full Vitest suite (124 tests across 19 files) |
+| `npm run docker:up` | Starts the PostgreSQL 16 container via Docker Compose |
 | `npm run docker:down` | Stops the PostgreSQL 16 container |
 
 ---
 
 ## Further Documentation
 
-- **[`SETUP.md`](SETUP.md)**: Detailed step-by-step local machine setup, troubleshooting common errors, and manual walkthrough.
-- **[`DEPLOYMENT.md`](DEPLOYMENT.md)**: Free production deployment guide covering Vercel (Frontend), Render (Backend), and Neon (PostgreSQL).
-- **[`BACKEND_AND_DATAFLOW.md`](BACKEND_AND_DATAFLOW.md)**: In-depth backend architecture, visual Mermaid sequence diagrams, and exhaustive REST API reference.
-- **[`personb_memory.md`](personb_memory.md)**: Development memory log, architectural decision records, and cross-team integration history.
-- **[`docs/`](docs/)**: Original PRD, Architecture specification, and API contracts.
+- **[`SETUP.md`](SETUP.md)**: Detailed step-by-step local machine setup and troubleshooting guide.
+- **[`BACKEND_AND_DATAFLOW.md`](BACKEND_AND_DATAFLOW.md)**: Comprehensive backend architecture, sequence diagrams, and REST API contract.
+- **[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)**: Production cloud deployment guide.
+- **[`docs/personb_memory.md`](docs/personb_memory.md)**: Complete development memory and architectural decision record.
+- **[`docs/`](docs/)**: Original PRD, Architecture specification, and database schema documentation.
 
 ---
 
 ## License
 
-This project is licensed under the ISC License.
-
+This project is licensed under the **ISC License**.

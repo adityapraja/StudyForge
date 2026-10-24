@@ -769,14 +769,17 @@ Test Files  19 passed (19)
      - **Frontend:** `https://study-forge-khaki.vercel.app/` (Hosted on Vercel Edge CDN)
      - **Backend API:** `https://studyforge-api-euwp.onrender.com` (Express 5 Web Service on Render)
      - **Database:** Neon serverless PostgreSQL 16
-  2. **README.md:**
-     - Added prominent Vercel Live Demo badge at the top of [`README.md`](README.md).
-     - Added live application callout box linking to the production application.
-     - Updated Mermaid system architecture diagram to display production domains alongside local dev ports.
-     - Added quick link in Quickstart guide allowing readers to immediately test the live app without local installation.
+  2. **README.md Restructuring:**
+     - Overhauled [`README.md`](../README.md) per user request to follow a streamlined, feature-centric structure:
+       - Project Title & Hero branding.
+       - "What is StudyForge?" conceptual summary emphasizing the honesty-first philosophy.
+       - Public deployment link (`https://study-forge-khaki.vercel.app/`).
+       - Features organized by capability (Focus Timer, Anti-Cheat, Progression, Daily Planner, Syllabus, Analytics, Social/Leaderboards, Privacy) rather than developmental phases.
+       - Comprehensive Tech Stack table & Monorepo Directory layout.
+       - Step-by-step local machine setup & testing instructions.
   3. **DEPLOYMENT.md:**
      - Updated step-by-step documentation and configuration tables with authoritative production URLs.
-- **Why:** Fulfills the final deployment milestone, making StudyForge publicly accessible and clearly documented for all users and evaluators.
+- **Why:** Delivers a clear, visitor-friendly presentation of the project for GitHub visitors, interviewers, and open-source contributors without internal phase terminology.
 
 
 
