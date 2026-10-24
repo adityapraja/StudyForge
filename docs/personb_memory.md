@@ -781,6 +781,30 @@ Test Files  19 passed (19)
      - Updated step-by-step documentation and configuration tables with authoritative production URLs.
 - **Why:** Delivers a clear, visitor-friendly presentation of the project for GitHub visitors, interviewers, and open-source contributors without internal phase terminology.
 
+---
+
+## 16. Full-Stack Dockerization & Guide (`docs/DOCKER_GUIDE.md`)
+
+**Date:** Oct 24, 2026  
+**Change:**
+- Implemented full-stack containerization for StudyForge with zero external dependencies:
+  1. **Backend Container (`server/Dockerfile`):**
+     - Node.js 22 Alpine image, unprivileged `node` user execution, production dependency caching (`npm ci --omit=dev`), and `/healthz` healthcheck.
+  2. **Frontend Container (`client/Dockerfile` & `client/nginx.conf`):**
+     - Multi-stage build (Node 22 build stage compiling React 19 to `dist/`, served by Nginx 1.27 Alpine ~25MB).
+     - Configured SPA fallback (`try_files $uri $uri/ /index.html`) and zero-CORS internal reverse proxying of `/api/` to `http://server:3000`.
+     - Static asset gzip compression and 1-year immutable caching headers.
+  3. **Full-Stack Orchestration (`docker-compose.full.yml`):**
+     - 3-tier isolated service stack (`db`, `server`, `client`) communicating over a private bridge network (`studyforge-network`).
+     - Automated database schema bootstrap and migrations on startup (`AUTO_INIT_DB="true"`).
+     - Named volume (`studyforge-pgdata`) for data persistence.
+  4. **Monorepo Scripts:**
+     - Added `npm run docker:full:up` and `npm run docker:full:down` in root `package.json`.
+  5. **Comprehensive Guide (`docs/DOCKER_GUIDE.md`):**
+     - Authored end-to-end containerization manual with Mermaid network diagrams, single-command launch instructions, database backups/restores, running tests inside containers, and VPS cloud deployment guide.
+- **Why:** Enables developers and devops engineers to spin up the entire application stack reproducibly with a single command across any environment.
+
+
 
 
 

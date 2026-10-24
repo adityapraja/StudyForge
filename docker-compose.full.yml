@@ -1,0 +1,79 @@
+services:
+  # -----------------------------------------------------------
+  # 1. PostgreSQL 16 Relational Database
+  # -----------------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    container_name: studyforge-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-tracker}
+    ports:
+      - "${DB_PORT:-5434}:5432"
+    volumes:
+      - studyforge-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-tracker}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - studyforge-network
+
+  # -----------------------------------------------------------
+  # 2. Express 5 REST API Backend
+  # -----------------------------------------------------------
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: studyforge-server
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-tracker}
+      JWT_SECRET: ${JWT_SECRET:-study-forge-production-super-secret-key-32-chars}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      COOKIE_NAME: ${COOKIE_NAME:-token}
+      CLIENT_URL: ${CLIENT_URL:-http://localhost:8080}
+      AUTO_INIT_DB: "true"
+      DAILY_CAP_HOURS: 16
+      MAX_SESSION_HOURS: 12
+      SESSION_XP_CAP_HOURS: 4
+      DEFAULT_STREAK_MINIMUM_MINUTES: 15
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - studyforge-network
+
+  # -----------------------------------------------------------
+  # 3. React 19 Frontend (Nginx Reverse Proxy)
+  # -----------------------------------------------------------
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: studyforge-client
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      server:
+        condition: service_healthy
+    networks:
+      - studyforge-network
+
+volumes:
+  studyforge-pgdata:
+    name: studyforge-pgdata
+
+networks:
+  studyforge-network:
+    name: studyforge-network
+

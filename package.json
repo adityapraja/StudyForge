@@ -11,7 +11,9 @@
     "client:build": "npm --prefix client run build",
     "db:setup": "npm --prefix server run db:setup",
     "docker:up": "docker compose up -d",
-    "docker:down": "docker compose down"
+    "docker:down": "docker compose down",
+    "docker:full:up": "docker compose -f docker-compose.full.yml up --build -d",
+    "docker:full:down": "docker compose -f docker-compose.full.yml down"
   }
 }
 

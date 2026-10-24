@@ -269,12 +269,15 @@ From the root directory, you can run the following commands:
 | `npm test` | Runs the full Vitest suite (124 tests across 19 files) |
 | `npm run docker:up` | Starts the PostgreSQL 16 container via Docker Compose |
 | `npm run docker:down` | Stops the PostgreSQL 16 container |
+| `npm run docker:full:up` | Builds and starts entire full-stack app in Docker (`localhost:8080`) |
+| `npm run docker:full:down` | Stops all full-stack containers |
 
 ---
 
 ## Further Documentation
 
 - **[`SETUP.md`](SETUP.md)**: Detailed step-by-step local machine setup and troubleshooting guide.
+- **[`docs/DOCKER_GUIDE.md`](docs/DOCKER_GUIDE.md)**: Complete guide to containerizing and running the full stack with Docker.
 - **[`BACKEND_AND_DATAFLOW.md`](BACKEND_AND_DATAFLOW.md)**: Comprehensive backend architecture, sequence diagrams, and REST API contract.
 - **[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)**: Production cloud deployment guide.
 - **[`docs/personb_memory.md`](docs/personb_memory.md)**: Complete development memory and architectural decision record.

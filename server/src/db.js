@@ -15,17 +15,17 @@ export const getPool = () => {
   if (!_pool) {
     const isTest = process.env.NODE_ENV === 'test' && process.env.TEST_DATABASE_URL;
     const connectionString = isTest ? process.env.TEST_DATABASE_URL : config.databaseUrl;
-    const isLocalhost = connectionString.includes('localhost') || connectionString.includes('127.0.0.1');
-    const isRemote =
+
+    // SSL is only enabled when explicitly requested, never by default
+    const needsSsl =
+      process.env.DATABASE_SSL === 'true' ||
       connectionString.includes('sslmode=require') ||
       connectionString.includes('neon.tech') ||
-      connectionString.includes('supabase.co') ||
-      process.env.DATABASE_SSL === 'true' ||
-      (config.isProduction && !isLocalhost);
+      connectionString.includes('supabase.co');
 
     _pool = new Pool({
       connectionString,
-      ssl: isRemote && !isLocalhost ? { rejectUnauthorized: false } : undefined,
+      ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
     });
   }
   return _pool;
