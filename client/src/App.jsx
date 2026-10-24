@@ -83,11 +83,14 @@ const normalizeSession = (value) => {
   return value;
 };
 
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
 const getSubjectName = (subjectId, subjects) =>
   (Array.isArray(subjects) ? subjects : []).find((subject) => subject.id === subjectId)?.name || 'General';
 
 const request = async (path, options = {}) => {
-  const response = await fetch(path, {
+  const url = path.startsWith('/api') && API_BASE ? `${API_BASE}${path}` : path;
+  const response = await fetch(url, {
     credentials: 'include',
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
     ...options,
@@ -566,7 +569,8 @@ function App() {
 
   const handleDownloadCsv = async () => {
     try {
-      const response = await fetch('/api/me/export.csv', { credentials: 'include' });
+      const csvUrl = API_BASE ? `${API_BASE}/api/me/export.csv` : '/api/me/export.csv';
+      const response = await fetch(csvUrl, { credentials: 'include' });
       if (!response.ok) {
         const body = await response.json();
         throw new Error(body.error?.message || 'CSV export failed');

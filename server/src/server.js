@@ -10,8 +10,8 @@ const start = async () => {
     await pool.query('SELECT 1');
     console.log('[DB] Connected to PostgreSQL successfully.');
 
-    // Auto-initialize schema in development
-    if (config.nodeEnv === 'development') {
+    // Auto-initialize schema in development or when explicitly enabled
+    if (config.nodeEnv === 'development' || process.env.AUTO_INIT_DB === 'true') {
       try {
         await initDb();
         console.log('[DB] Schema verified/initialized.');

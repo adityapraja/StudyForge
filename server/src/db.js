@@ -13,11 +13,19 @@ let _pool = null;
 
 export const getPool = () => {
   if (!_pool) {
+    const isTest = process.env.NODE_ENV === 'test' && process.env.TEST_DATABASE_URL;
+    const connectionString = isTest ? process.env.TEST_DATABASE_URL : config.databaseUrl;
+    const isLocalhost = connectionString.includes('localhost') || connectionString.includes('127.0.0.1');
+    const isRemote =
+      connectionString.includes('sslmode=require') ||
+      connectionString.includes('neon.tech') ||
+      connectionString.includes('supabase.co') ||
+      process.env.DATABASE_SSL === 'true' ||
+      (config.isProduction && !isLocalhost);
+
     _pool = new Pool({
-      connectionString:
-        process.env.NODE_ENV === 'test' && process.env.TEST_DATABASE_URL
-          ? process.env.TEST_DATABASE_URL
-          : config.databaseUrl,
+      connectionString,
+      ssl: isRemote && !isLocalhost ? { rejectUnauthorized: false } : undefined,
     });
   }
   return _pool;

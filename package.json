@@ -9,6 +9,7 @@
     "test": "npm --prefix server test",
     "client:dev": "npm --prefix client run dev",
     "client:build": "npm --prefix client run build",
+    "db:setup": "npm --prefix server run db:setup",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down"
   }

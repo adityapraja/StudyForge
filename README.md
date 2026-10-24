@@ -212,6 +212,7 @@ Test Files  19 passed (19)
 | `npm run dev` | Starts Express backend in development mode with `--watch` (`localhost:3000`) |
 | `npm run client:dev` | Starts Vite frontend dev server with hot module reload (`localhost:5173`) |
 | `npm run client:build` | Compiles production client bundle into `client/dist/` |
+| `npm run db:setup` | Initializes schema and migrations on target database (`DATABASE_URL`) |
 | `npm test` | Runs all 19 Vitest test suites (124 tests) against isolated test cluster |
 | `npm run docker:up` | Spawns the PostgreSQL 16 container in background |
 | `npm run docker:down` | Stops the PostgreSQL 16 container |
@@ -221,6 +222,7 @@ Test Files  19 passed (19)
 ## Further Documentation
 
 - **[`SETUP.md`](SETUP.md)**: Detailed step-by-step local machine setup, troubleshooting common errors, and manual walkthrough.
+- **[`DEPLOYMENT.md`](DEPLOYMENT.md)**: Free production deployment guide covering Vercel (Frontend), Render (Backend), and Neon (PostgreSQL).
 - **[`BACKEND_AND_DATAFLOW.md`](BACKEND_AND_DATAFLOW.md)**: In-depth backend architecture, visual Mermaid sequence diagrams, and exhaustive REST API reference.
 - **[`personb_memory.md`](personb_memory.md)**: Development memory log, architectural decision records, and cross-team integration history.
 - **[`docs/`](docs/)**: Original PRD, Architecture specification, and API contracts.

@@ -733,6 +733,32 @@ Test Files  19 passed (19)
      - Verified with `npm --prefix client run build` (built cleanly in ~340ms with 0 errors).
 - **Why:** Delivers a cohesive, polished visual identity across the browser tab, auth flow, app topbar, and GitHub repository readme.
 
+---
+
+## 14. Free Production Deployment Architecture & Guide (`DEPLOYMENT.md`)
+
+**Date:** Oct 23, 2026  
+**Change:**
+- Created [`DEPLOYMENT.md`](DEPLOYMENT.md) with comprehensive step-by-step production deployment instructions for the best free modern stack:
+  1. **Neon PostgreSQL 16 (Database):**
+     - Clarified that Prisma is an ORM rather than a database host, and Render's free PostgreSQL expires after 30 days. Recommended Neon (neon.tech) as the permanent free cloud PostgreSQL tier (0.5 GiB, serverless, never deleted).
+  2. **Render Web Service (Backend):**
+     - Configured production Express deployment on Render with Node.js runtime and environment variables (`DATABASE_URL`, `JWT_SECRET`, `CLIENT_URL`, `AUTO_INIT_DB`).
+     - Added free keep-awake ping guidance using cron-job.org / UptimeRobot against `/healthz` to eliminate Render's 15-minute inactivity sleep.
+  3. **Vercel Edge (Frontend):**
+     - Created [`client/vercel.json`](client/vercel.json) with SPA rewrites (`/(.*) -> /index.html`) and an optional `/api/:path*` proxy rule to Render to eliminate all cross-site cookie restrictions and CORS preflights.
+  4. **Codebase Enhancements for Cloud Deployment:**
+     - Updated `server/src/db.js` with remote SSL certificate detection (`ssl: { rejectUnauthorized: false }`) for Neon and cloud PostgreSQL hosts.
+     - Updated `server/src/server.js` to support automatic schema and migration initialization when `AUTO_INIT_DB=true`.
+     - Created standalone script `server/src/db-setup.js` and npm script `npm run db:setup` for CLI bootstrapping of remote databases.
+     - Updated `server/src/modules/auth/auth.routes.js` to support `COOKIE_SAME_SITE` and `COOKIE_SECURE` configuration when calling cross-origin.
+     - Updated `client/src/App.jsx` to support `VITE_API_URL` environment variable.
+- **Verification:**
+  - `npm --prefix client run build`: Built cleanly with 0 errors.
+  - `npm --prefix server test`: All 19 test files (124 tests) passed cleanly (100%).
+- **Why:** Delivers a production-ready deployment pathway with zero ongoing hosting costs, rock-solid security, and automated database bootstrapping.
+
+
 
 
 
