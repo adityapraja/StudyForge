@@ -125,7 +125,7 @@ export function useTimer({
   // Dynamic document title ticker
   useEffect(() => {
     if (!activeSession) {
-      document.title = 'StudyForge — Focus Habit Tracker';
+      document.title = 'StudyForge';
       return;
     }
     const subject = getSubjectName(activeSession.subject_id, subjects);

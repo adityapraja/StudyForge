@@ -29,8 +29,10 @@ export default function AuthPage(props) {
       </div>
       <div className="auth-card">
         <div className="auth-header">
-          <img src="/studyforge.svg" alt="StudyForge Logo" className="auth-logo" width="44" height="44" />
-          <p className="eyebrow">Study Habit Tracker</p>
+          <div className="auth-brand">
+            <img src="/studyforge.svg" alt="StudyForge Logo" className="auth-logo" width="36" height="36" />
+            <strong>StudyForge</strong>
+          </div>
           <h1>{authMode === 'login' ? 'Welcome back' : 'Create your account'}</h1>
         </div>
         {loadErrors?.auth ? <p className="error-message" role="alert">{loadErrors.auth}</p> : null}

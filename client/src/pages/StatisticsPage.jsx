@@ -59,90 +59,82 @@ export default function StatisticsPage({
     return { totalSeconds, activeDays, maxSeconds, longestStreak };
   }, [heatmapYear, CURRENT_YEAR, daysMap]);
 
-  // Compute weeks (53/54 columns) and 7 day rows for GitHub-style layout
-  const calendarWeeks = useMemo(() => {
+  // Compute 12 month blocks with separate week columns for each month
+  const calendarMonths = useMemo(() => {
     const year = Number(heatmapYear) || CURRENT_YEAR;
-    const isLeap = (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0));
-    const totalDays = isLeap ? 366 : 365;
-    const jan1 = new Date(Date.UTC(year, 0, 1));
-    const startDayOfWeek = jan1.getUTCDay(); // 0 = Sun, 1 = Mon ... 6 = Sat
-    const totalSlots = startDayOfWeek + totalDays;
-    const numWeeks = Math.ceil(totalSlots / 7);
-
     const maxSecs = heatmapMaxSeconds || annualSummary.maxSeconds || 1;
 
-    const weeks = [];
-    for (let w = 0; w < numWeeks; w++) {
-      const days = [];
-      for (let d = 0; d < 7; d++) {
-        const slotIndex = w * 7 + d;
-        const dayOfYear = slotIndex - startDayOfWeek;
-        if (dayOfYear < 0 || dayOfYear >= totalDays) {
-          days.push({ inYear: false, key: `pad-${w}-${d}` });
-        } else {
-          const dateObj = new Date(Date.UTC(year, 0, dayOfYear + 1));
-          const dateStr = dateObj.toISOString().slice(0, 10);
-          const seconds = daysMap.get(dateStr) || 0;
-
-          // GitHub 0..4 color level calculation
-          let level = 0;
-          if (seconds > 0) {
-            if (maxSecs <= 3600) {
-              if (seconds < 900) level = 1;
-              else if (seconds < 1800) level = 2;
-              else if (seconds < 2700) level = 3;
-              else level = 4;
-            } else {
-              const ratio = seconds / maxSecs;
-              if (ratio <= 0.25) level = 1;
-              else if (ratio <= 0.5) level = 2;
-              else if (ratio <= 0.75) level = 3;
-              else level = 4;
-            }
-          }
-
-          const formattedDate = dateObj.toLocaleDateString('en-US', {
-            weekday: 'short',
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-            timeZone: 'UTC',
-          });
-
-          days.push({
-            inYear: true,
-            key: dateStr,
-            date: dateStr,
-            dayOfWeek: d,
-            seconds,
-            level,
-            formattedDate,
-            formattedTime: seconds > 0 ? formatSeconds(seconds) : 'No study time',
-          });
-        }
-      }
-      weeks.push(days);
-    }
-    return weeks;
-  }, [heatmapYear, heatmapMaxSeconds, CURRENT_YEAR, annualSummary.maxSeconds, daysMap, formatSeconds]);
-
-  // Compute month labels aligned with week columns
-  const monthLabels = useMemo(() => {
-    const year = Number(heatmapYear) || CURRENT_YEAR;
-    const jan1 = new Date(Date.UTC(year, 0, 1));
-    const startDayOfWeek = jan1.getUTCDay();
-    const labels = [];
+    const months = [];
     for (let m = 0; m < 12; m++) {
-      const d = new Date(Date.UTC(year, m, 1));
-      const dayOfYear = Math.floor((d - jan1) / 86400000);
-      const col = Math.floor((dayOfYear + startDayOfWeek) / 7);
-      labels.push({
-        name: d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' }),
-        col: col + 1,
+      const first = new Date(Date.UTC(year, m, 1));
+      const last = new Date(Date.UTC(year, m + 1, 0));
+      const startDay = first.getUTCDay(); // 0 = Sun .. 6 = Sat
+      const daysInMonth = last.getUTCDate();
+      const cols = Math.ceil((startDay + daysInMonth) / 7);
+
+      const weeks = [];
+      for (let c = 0; c < cols; c++) {
+        const week = [];
+        for (let r = 0; r < 7; r++) {
+          const dayNum = c * 7 + r - startDay + 1;
+          if (dayNum >= 1 && dayNum <= daysInMonth) {
+            const dateObj = new Date(Date.UTC(year, m, dayNum));
+            const dateStr = dateObj.toISOString().slice(0, 10);
+            const seconds = daysMap.get(dateStr) || 0;
+
+            let level = 0;
+            if (seconds > 0) {
+              if (maxSecs <= 3600) {
+                if (seconds < 900) level = 1;
+                else if (seconds < 1800) level = 2;
+                else if (seconds < 2700) level = 3;
+                else level = 4;
+              } else {
+                const ratio = seconds / maxSecs;
+                if (ratio <= 0.25) level = 1;
+                else if (ratio <= 0.5) level = 2;
+                else if (ratio <= 0.75) level = 3;
+                else level = 4;
+              }
+            }
+
+            const formattedDate = dateObj.toLocaleDateString('en-US', {
+              weekday: 'short',
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              timeZone: 'UTC',
+            });
+
+            week.push({
+              inMonth: true,
+              key: dateStr,
+              date: dateStr,
+              dayOfWeek: r,
+              seconds,
+              level,
+              formattedDate,
+              formattedTime: seconds > 0 ? formatSeconds(seconds) : 'No study time',
+            });
+          } else {
+            week.push({
+              inMonth: false,
+              key: `empty-${m}-${c}-${r}`,
+            });
+          }
+        }
+        weeks.push(week);
+      }
+
+      months.push({
+        name: first.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' }),
+        monthIndex: m,
+        weeks,
       });
     }
-    return labels;
-  }, [heatmapYear, CURRENT_YEAR]);
+
+    return months;
+  }, [heatmapYear, heatmapMaxSeconds, CURRENT_YEAR, annualSummary.maxSeconds, daysMap, formatSeconds]);
 
   return (
     <section className="page-shell">
@@ -197,56 +189,49 @@ export default function StatisticsPage({
           <div className="gh-heatmap-card">
             <div className="gh-heatmap-scroll" tabIndex={0} aria-label="Study calendar heatmap">
               <div className="gh-heatmap-container">
-                {/* Month labels header */}
-                <div
-                  className="gh-months-row"
-                  aria-hidden="true"
-                  style={{ gridTemplateColumns: `repeat(${calendarWeeks.length}, 11px)` }}
-                >
-                  {monthLabels.map((m) => (
-                    <span key={m.name} className="gh-month-label" style={{ gridColumnStart: m.col }}>
-                      {m.name}
-                    </span>
-                  ))}
+                {/* Day-of-week labels (Mon, Wed, Fri) */}
+                <div className="gh-days-col" aria-hidden="true">
+                  <span className="gh-day-label"></span>
+                  <span className="gh-day-label">Mon</span>
+                  <span className="gh-day-label"></span>
+                  <span className="gh-day-label">Wed</span>
+                  <span className="gh-day-label"></span>
+                  <span className="gh-day-label">Fri</span>
+                  <span className="gh-day-label"></span>
                 </div>
 
-                {/* Heatmap Body: Day labels + 53 week columns */}
-                <div className="gh-heatmap-body" role="grid" aria-label={`Study activity in ${heatmap.year}`}>
-                  <div className="gh-days-col" aria-hidden="true">
-                    <span className="gh-day-label"></span>
-                    <span className="gh-day-label">Mon</span>
-                    <span className="gh-day-label"></span>
-                    <span className="gh-day-label">Wed</span>
-                    <span className="gh-day-label"></span>
-                    <span className="gh-day-label">Fri</span>
-                    <span className="gh-day-label"></span>
-                  </div>
-
-                  <div className="gh-weeks-grid" role="rowgroup">
-                    {calendarWeeks.map((week, wIdx) => (
-                      <div className="gh-week-col" key={`week-${wIdx}`} role="row">
-                        {week.map((day) => {
-                          if (!day.inYear) {
-                            return <div key={day.key} className="gh-cell gh-cell-empty" aria-hidden="true" />;
-                          }
-                          return (
-                            <div
-                              key={day.key}
-                              className={`gh-cell gh-level-${day.level}`}
-                              role="gridcell"
-                              tabIndex={0}
-                              aria-label={`${day.formattedDate}: ${day.formattedTime}`}
-                              title={`${day.formattedTime} on ${day.formattedDate}`}
-                              onMouseEnter={() => setHoveredDay(day)}
-                              onMouseLeave={() => setHoveredDay(null)}
-                              onFocus={() => setHoveredDay(day)}
-                              onBlur={() => setHoveredDay(null)}
-                            />
-                          );
-                        })}
+                {/* 12 Month Blocks separated by small gap */}
+                <div className="gh-months-grid" role="grid" aria-label={`Study activity in ${heatmap.year}`}>
+                  {calendarMonths.map((m) => (
+                    <div className="gh-month-block" key={m.name}>
+                      <div className="gh-month-title">{m.name}</div>
+                      <div className="gh-month-weeks">
+                        {m.weeks.map((week, wIdx) => (
+                          <div className="gh-week-col" key={`w-${wIdx}`}>
+                            {week.map((day) => {
+                              if (!day.inMonth) {
+                                return <div key={day.key} className="gh-cell gh-cell-empty" aria-hidden="true" />;
+                              }
+                              return (
+                                <div
+                                  key={day.key}
+                                  className={`gh-cell gh-level-${day.level}`}
+                                  role="gridcell"
+                                  tabIndex={0}
+                                  aria-label={`${day.formattedDate}: ${day.formattedTime}`}
+                                  title={`${day.formattedTime} on ${day.formattedDate}`}
+                                  onMouseEnter={() => setHoveredDay(day)}
+                                  onMouseLeave={() => setHoveredDay(null)}
+                                  onFocus={() => setHoveredDay(day)}
+                                  onBlur={() => setHoveredDay(null)}
+                                />
+                              );
+                            })}
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>

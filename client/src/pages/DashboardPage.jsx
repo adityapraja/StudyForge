@@ -58,7 +58,7 @@ export default function DashboardPage({ formatSeconds, toClock, getSubjectName, 
 
         <div className="panel">
           <div className="panel-header">
-            <p className="eyebrow">Tracker</p>
+            <p className="eyebrow">Focus</p>
             <h2>Quick focus</h2>
           </div>
           <ul className="list-stack">

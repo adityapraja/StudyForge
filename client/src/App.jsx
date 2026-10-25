@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAuth } from './hooks/useAuth.js';
 import { useAppData } from './hooks/useAppData.js';
 import { useTimer } from './hooks/useTimer.js';
-import Header from './components/layout/Header.jsx';
+import Sidebar from './components/layout/Sidebar.jsx';
 import DotGrid from './components/common/DotGrid.jsx';
 import {
   AuthPage,
@@ -27,6 +27,7 @@ import { CURRENT_YEAR } from './utils/constants.js';
 export default function App() {
   const { user, setUser, isAuthenticated, checkingAuth, handleLogout } = useAuth();
   const [mode, setMode] = useState(() => localStorage.getItem('studyforge_nav_mode') || 'dashboard');
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
   const appData = useAppData(isAuthenticated, user, mode);
   const timer = useTimer({
@@ -107,7 +108,7 @@ export default function App() {
   };
 
   return (
-    <div className="app-shell">
+    <div className="app-shell app-layout-sidebar">
       <div className="page-bg">
         <DotGrid
           baseColor="#ebebeb"
@@ -124,32 +125,54 @@ export default function App() {
         />
       </div>
 
-      <Header
+      {/* Mobile Top Header */}
+      <header className="mobile-header">
+        <button
+          type="button"
+          className="mobile-nav-toggle"
+          onClick={() => setIsMobileNavOpen(!isMobileNavOpen)}
+          aria-label="Toggle navigation"
+        >
+          ☰
+        </button>
+        <div className="mobile-brand">
+          <img src="/studyforge.svg" alt="StudyForge" width="24" height="24" />
+          <strong>StudyForge</strong>
+        </div>
+        <span className="mobile-user">{user?.username}</span>
+      </header>
+
+      {/* Left Navigation Sidebar */}
+      <Sidebar
         mode={mode}
         onNavChange={handleNavChange}
-        username={user?.username}
+        user={user}
         onLogout={handleLogout}
+        isMobileOpen={isMobileNavOpen}
+        setIsMobileOpen={setIsMobileNavOpen}
       />
 
-      <main className="app-content">
-        {Object.entries(appData.loadErrors)
-          .filter(
-            ([key, message]) =>
-              Boolean(message) &&
-              ![
-                'auth', 'settings', 'export', 'subjects', 'timer', 'planner',
-                'statistics', 'heatmap', 'syllabus', 'exams', 'insights',
-                'goals', 'social', 'friends', 'friendRequests', 'blockedUsers',
-                'leaderboard',
-              ].includes(key)
-          )
-          .map(([key, message]) => (
-            <p className="error-message" role="alert" key={key}>
-              {key}: {message}
-            </p>
-          ))}
-        {pages[mode] || pages.dashboard}
-      </main>
+      <div className="app-main-area">
+        <main className="app-content">
+          {Object.entries(appData.loadErrors)
+            .filter(
+              ([key, message]) =>
+                Boolean(message) &&
+                ![
+                  'auth', 'settings', 'export', 'subjects', 'timer', 'planner',
+                  'statistics', 'heatmap', 'syllabus', 'exams', 'insights',
+                  'goals', 'social', 'friends', 'friendRequests', 'blockedUsers',
+                  'leaderboard',
+                ].includes(key)
+            )
+            .map(([key, message]) => (
+              <p className="error-message" role="alert" key={key}>
+                {key}: {message}
+              </p>
+            ))}
+          {pages[mode] || pages.dashboard}
+        </main>
+      </div>
     </div>
   );
 }
