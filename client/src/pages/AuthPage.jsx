@@ -1,8 +1,11 @@
 import DotGrid from '../components/common/DotGrid.jsx';
+import ThemeToggle from '../components/common/ThemeToggle.jsx';
 import { useAuth } from '../hooks/useAuth.js';
+import { useTheme } from '../hooks/useTheme.js';
 
 export default function AuthPage(props) {
   const authContext = useAuth();
+  const { isDark } = useTheme();
 
   const authMode = props.authMode ?? authContext?.authMode ?? 'login';
   const setAuthMode = props.setAuthMode ?? authContext?.setAuthMode ?? (() => {});
@@ -14,8 +17,8 @@ export default function AuthPage(props) {
     <div className="auth-shell">
       <div className="auth-bg">
         <DotGrid
-          baseColor="#e0e0e0"
-          activeColor="#0a0a0a"
+          baseColor={isDark ? '#262626' : '#e0e0e0'}
+          activeColor={isDark ? '#f4f4f4' : '#0a0a0a'}
           shape="circle"
           dotSize={4}
           gap={22}
@@ -23,15 +26,24 @@ export default function AuthPage(props) {
           shockRadius={320}
           shockStrength={5}
           returnDuration={0.8}
-          glow={0.3}
-          opacity={0.85}
+          glow={isDark ? 0.35 : 0.3}
+          opacity={isDark ? 0.65 : 0.85}
         />
       </div>
       <div className="auth-card">
         <div className="auth-header">
-          <div className="auth-brand">
-            <img src="/studyforge.svg" alt="StudyForge Logo" className="auth-logo" width="36" height="36" />
-            <strong>StudyForge</strong>
+          <div className="auth-brand-row">
+            <div className="auth-brand">
+              <img
+                src={isDark ? '/studyforge-dark.svg' : '/studyforge.svg'}
+                alt="StudyForge Logo"
+                className="auth-logo"
+                width="36"
+                height="36"
+              />
+              <strong>StudyForge</strong>
+            </div>
+            <ThemeToggle variant="icon" className="auth-theme-btn" />
           </div>
           <h1>{authMode === 'login' ? 'Welcome back' : 'Create your account'}</h1>
         </div>

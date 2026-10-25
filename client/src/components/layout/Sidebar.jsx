@@ -1,4 +1,6 @@
 import { NAV_ITEMS } from '../../utils/constants.js';
+import { useTheme } from '../../hooks/useTheme.js';
+import { ThemeToggle } from '../common/ThemeToggle.jsx';
 
 const NAV_ICONS = {
   dashboard: (
@@ -96,6 +98,8 @@ const NAV_ICONS = {
 };
 
 export default function Sidebar({ mode, onNavChange, user, onLogout, isMobileOpen, setIsMobileOpen }) {
+  const { isDark } = useTheme();
+
   const handleItemClick = (item) => {
     onNavChange(item);
     if (setIsMobileOpen) setIsMobileOpen(false);
@@ -115,7 +119,13 @@ export default function Sidebar({ mode, onNavChange, user, onLogout, isMobileOpe
       <aside className={`app-sidebar ${isMobileOpen ? 'open' : ''}`}>
         {/* Brand header */}
         <div className="sidebar-brand">
-          <img src="/studyforge.svg" alt="StudyForge Logo" className="brand-logo" width="28" height="28" />
+          <img
+            src={isDark ? '/studyforge-dark.svg' : '/studyforge.svg'}
+            alt="StudyForge Logo"
+            className="brand-logo"
+            width="28"
+            height="28"
+          />
           <div className="brand-text">
             <strong>StudyForge</strong>
           </div>
@@ -161,6 +171,7 @@ export default function Sidebar({ mode, onNavChange, user, onLogout, isMobileOpe
               <small className="sidebar-user-level">Lv. {user?.level || 1} · {user?.xp || 0} XP</small>
             </div>
           </div>
+          <ThemeToggle variant="sidebar" />
           <button
             type="button"
             className="ghost-button sidebar-logout-btn"

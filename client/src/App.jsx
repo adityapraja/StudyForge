@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { useAuth } from './hooks/useAuth.js';
 import { useAppData } from './hooks/useAppData.js';
 import { useTimer } from './hooks/useTimer.js';
+import { useTheme } from './hooks/useTheme.js';
 import Sidebar from './components/layout/Sidebar.jsx';
 import DotGrid from './components/common/DotGrid.jsx';
+import ThemeToggle from './components/common/ThemeToggle.jsx';
 import {
   AuthPage,
   DashboardPage,
@@ -26,6 +28,7 @@ import { CURRENT_YEAR } from './utils/constants.js';
 
 export default function App() {
   const { user, setUser, isAuthenticated, checkingAuth, handleLogout } = useAuth();
+  const { isDark } = useTheme();
   const [mode, setMode] = useState(() => localStorage.getItem('studyforge_nav_mode') || 'dashboard');
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
@@ -111,8 +114,8 @@ export default function App() {
     <div className="app-shell app-layout-sidebar">
       <div className="page-bg">
         <DotGrid
-          baseColor="#ebebeb"
-          activeColor="#0a0a0a"
+          baseColor={isDark ? '#262626' : '#ebebeb'}
+          activeColor={isDark ? '#f4f4f4' : '#0a0a0a'}
           shape="circle"
           dotSize={3}
           gap={26}
@@ -120,8 +123,8 @@ export default function App() {
           shockRadius={260}
           shockStrength={4}
           returnDuration={0.8}
-          glow={0.2}
-          opacity={0.5}
+          glow={isDark ? 0.35 : 0.2}
+          opacity={isDark ? 0.55 : 0.5}
         />
       </div>
 
@@ -136,10 +139,18 @@ export default function App() {
           ☰
         </button>
         <div className="mobile-brand">
-          <img src="/studyforge.svg" alt="StudyForge" width="24" height="24" />
+          <img
+            src={isDark ? '/studyforge-dark.svg' : '/studyforge.svg'}
+            alt="StudyForge"
+            width="24"
+            height="24"
+          />
           <strong>StudyForge</strong>
         </div>
-        <span className="mobile-user">{user?.username}</span>
+        <div className="mobile-header-right">
+          <ThemeToggle variant="icon" />
+          <span className="mobile-user">{user?.username}</span>
+        </div>
       </header>
 
       {/* Left Navigation Sidebar */}

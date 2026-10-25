@@ -1,3 +1,5 @@
+import ThemeToggle from '../components/common/ThemeToggle.jsx';
+
 export default function SettingsPage({ user, loadErrors, goals, successMessage, handleLogout, handleDownloadCsv, handleSettingsSave, handleAccountDelete }) {
   return (
     <section className="page-shell">
@@ -27,6 +29,10 @@ export default function SettingsPage({ user, loadErrors, goals, successMessage, 
           </div>
           <div className="panel stack-form">
             <h2>Privacy and account</h2>
+            <label>
+              <span>Interface theme</span>
+              <ThemeToggle variant="buttons" />
+            </label>
             <label><span>Weekly time visibility</span>
               <select name="weekly_time" defaultValue={user.privacy?.weekly_time || 'friends'}>
                 <option value="everyone">Everyone</option><option value="friends">Friends</option><option value="nobody">Nobody</option>
