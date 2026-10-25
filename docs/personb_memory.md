@@ -822,6 +822,84 @@ Test Files  19 passed (19)
      - `npm --prefix client run build`: Built cleanly in ~380ms (zero bundle or syntax errors).
 - **Why:** Elevates the visual polish and interactivity of StudyForge with modern WebGL physics while adhering to the minimalist monochrome aesthetic.
 
+---
+
+## 18. Timer Section Audit, Countdown Persistence & Bug Fixes
+
+**Date:** Oct 25, 2026  
+**Change:**
+- Addressed countdown reset on page refresh, resolved a break-time subtraction formula bug, and fixed usability glitches across the Timer experience:
+  1. **Countdown Configuration & Active Session Persistence Across Refresh:**
+     - **Bug:** When setting a countdown (e.g. 1 min) and starting the session, refreshing the page caused `timerMode` to reset to `'stopwatch'` and `countdownMinutes` to reset to default `25`. Toggling back to countdown resulted in `25m - trackedTime` (`00:24:55`).
+     - **Fix:** Stored active timer metadata (`sessionId`, `timerMode`, `countdownMinutes`) in `localStorage` under `studyforge_active_timer`, and initialized user timer preferences from `localStorage`. On page reload/hydration via `/api/sessions/active`, the active session's exact mode, countdown duration, and progress are seamlessly restored.
+  2. **Backward-Ticking Clock During Break (Critical Math Bug):**
+     - **Bug:** In `App.jsx`, when `status === 'on_break'`, `end` was assigned `segmentStart`. However, `trackedTime` formula also subtracted `currentBreak = (nowMs - segmentStart)`. Because `end` was already locked at `segmentStart`, subtracting `currentBreak` subtracted the break duration twice, causing `trackedTime` to count backwards every second during a break.
+     - **Fix:** Refactored `trackedTime` to cleanly isolate `status === 'running'` vs `status !== 'running'`. During pause and break, study time remains accurately frozen at the study seconds logged prior to the pause/break.
+  3. **Break & Pause Duration Tracking:**
+     - Added `currentSegmentDuration` to track elapsed break and pause time, displaying live indicators (e.g. `⏸ Paused (00:01:23)`, `☕ On Break (00:04:12)`).
+  4. **Active Session Subject Sync:**
+     - Synced `selectedSubjectId` with `activeSession.subject_id` upon session hydration so the disabled dropdown displays the actual subject being studied rather than the first alphabetical subject.
+  5. **Countdown Target Completion & Audio Chime:**
+     - Implemented synthetic web audio chime (`playChime()`) via browser `AudioContext` when countdown hits 0 (once per session).
+     - Added `isCountdownComplete` state with a completion banner ("Focus target reached!"), overtime counter (`+00:01:20 overtime`), and immediate "Stop & Save" action.
+  6. **Dynamic Tab Title (`document.title`):**
+     - Updated tab title dynamically while timer runs (e.g. `(00:45) • Physics — StudyForge`, `☕ Break (02:10) • Physics`, `🔔 Time's Up! • Physics`) so students can monitor their timers while on other tabs.
+  7. **Note Truncation & Validation:**
+     - Added `maxLength={200}` and a live character counter (`{note.length}/200`) to prevent DB 200-character constraint violations, and persisted notes across page refresh.
+  8. **Quick Preset Duration Pills:**
+     - Added `15m`, `25m (Pomodoro)`, `45m`, and `60m` preset duration pills for 1-click countdown setup.
+- **Why:** Delivers a reliable, frustration-free focus timer that maintains state across browser reloads, prevents data corruption, and improves multi-tab usability.
+
+---
+
+## 19. React Frontend Architecture Refactoring
+
+**Date:** Oct 25, 2026  
+**Change:**
+- Refactored the monolithic 1,055-line `client/src/App.jsx` into a modular, scalable React directory structure:
+  1. **Directory Organization:**
+     - `src/services/api.js`: Unified API client with base URL configuration, credential inclusion, JSON parsing, and normalized error throwing.
+     - `src/utils/`: Separated utilities into `constants.js` (`NAV_ITEMS`, `emptyPlanner`, `emptyStats`), `date.js` (`localDate`, `daysInYear`, etc.), `time.js` (`formatSeconds`, `toClock`, `playChime`), and `helpers.js` (`normalizeList`, `normalizeSession`, `getSubjectName`).
+     - `src/context/AuthContext.jsx` & `src/hooks/useAuth.js`: Dedicated authentication state provider handling session check, credentials, login/register forms, and logout.
+     - `src/hooks/`:
+       - `useTimer.js`: Encapsulates timer state, ticker intervals, localStorage synchronization, countdown management, chime playback, and document title updates.
+       - `useAppData.js`: Manages domain datasets (`subjects`, `planner`, `stats`, `heatmap`, `syllabus`, `exams`, `insights`, `social`, `leaderboard`) and CRUD handlers.
+     - `src/components/layout/Header.jsx`: Modular Topbar with brand logo, dynamic navigation tabs, and user profile block.
+     - `src/components/common/DotGrid/`: Self-contained interactive WebGL2 particle grid component.
+     - `src/pages/`: Modular page views grouped by domain (`Auth`, `Dashboard`, `Timer`, `Planner`, `Subjects`, `Statistics`, `Syllabus`, `Exams`, `Insights`, `WeeklyGoals`, `Friends`, `Leaderboard`, `Settings`) with clean barrel exports (`src/pages/index.js`).
+     - `src/components/*.jsx`: Maintained backward-compatible proxy re-exports to prevent any broken references.
+  2. **App.jsx Simplification:**
+     - Reduced `client/src/App.jsx` from **1,055 lines** to **~140 lines** as a high-level layout coordinator.
+  3. **Verification:**
+     - `npm --prefix client run build`: Built cleanly in ~220ms.
+     - `npm --prefix client run lint`: Passed with 0 errors.
+- **Why:** Drastically improves code readability, maintainability, separation of concerns, and developer velocity while maintaining 100% functional and visual parity.
+
+---
+
+## 20. Frontend-Backend Connectivity & API Contract Audit
+
+**Date:** Oct 25, 2026  
+**Change:**
+- Conducted full audit of frontend-backend connectivity across local development and production configurations:
+  1. **Dual Proxy Architecture Verified:**
+     - **Local Development:** Vite dev server proxy in `client/vite.config.js` routes `/api` -> `http://localhost:3000` with `changeOrigin: true`.
+     - **Production:** Vercel edge rewrite in `client/vercel.json` rewrites `/api/:path*` -> `https://studyforge-api-euwp.onrender.com/api/:path*`, allowing first-party cookie exchange on `studyforge.adityapraja.in` without cross-site cookie restrictions.
+  2. **CORS & Authentication Credentials:**
+     - CORS configured on Express with `origin: config.clientUrl || true` and `credentials: true`.
+     - Preflight `OPTIONS` requests respond with `Access-Control-Allow-Origin: http://localhost:5173` and `Access-Control-Allow-Credentials: true`.
+     - Client `request()` utility in `client/src/services/api.js` explicitly includes `credentials: 'include'` for all requests.
+  3. **Route Mismatch & Endpoint Gap Fixes:**
+     - **Leaderboard Route Dual-Mounting:** Frontend requested `/api/leaderboard` (singular) while server mounted `/api/leaderboards` (plural). Mounted both `app.use('/api/leaderboard', leaderboardsRoutes)` and `app.use('/api/leaderboards', leaderboardsRoutes)` in `server/src/app.js`.
+     - **Blocked Users Retrieval Endpoint:** Frontend called `GET /api/blocks` on Friends page, but server only had `POST` and `DELETE`. Implemented `getBlockedUsers` in `friends.service.js` and mounted `blocksRouter.get('/blocks', ...)` in `friends.routes.js`.
+  4. **Verification:**
+     - Added test assertion for `GET /api/blocks` in `server/test/friends.test.js`.
+     - `npm --prefix server test`: All 19 test files (124 tests) passed.
+     - `npm --prefix client run build`: Built cleanly in ~350ms.
+- **Why:** Guarantees 100% route contract alignment between frontend and backend in both local and production environments, preventing silent runtime failures.
+
+
+
 
 
 

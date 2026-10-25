@@ -1,4 +1,6 @@
-export default function DashboardPage({ formatSeconds, toClock, getSubjectName, user, subjects, activeSession, planner, xp, streak, goals, exams, setMode, todaySeconds, trackedTime }) {
+import { TaskCheckbox } from '@/components/ui/task-checkbox';
+
+export default function DashboardPage({ formatSeconds, toClock, getSubjectName, user, subjects, activeSession, planner, setPlanner, xp, streak, goals, exams, setMode, todaySeconds, trackedTime }) {
   return (
     <section className="page-shell">
       <div className="section-heading">
@@ -62,8 +64,18 @@ export default function DashboardPage({ formatSeconds, toClock, getSubjectName, 
           <ul className="list-stack">
             {(planner?.tasks ?? []).map((task) => (
               <li key={task.id} className={task.done ? 'done' : ''}>
-                <span>{task.text}</span>
-                <input type="checkbox" checked={task.done} readOnly />
+                <TaskCheckbox
+                  checked={task.done}
+                  label={task.text}
+                  onCheckedChange={setPlanner ? (checked) => {
+                    setPlanner((current) => ({
+                      ...current,
+                      tasks: (current.tasks || []).map((item) =>
+                        item.id === task.id ? { ...item, done: checked } : item
+                      ),
+                    }));
+                  } : undefined}
+                />
               </li>
             ))}
           </ul>

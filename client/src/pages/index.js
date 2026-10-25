@@ -1,0 +1,14 @@
+export { default as AuthPage } from './AuthPage.jsx';
+export { default as DashboardPage } from './DashboardPage.jsx';
+export { default as TimerPage } from './TimerPage.jsx';
+export { default as PlannerPage } from './PlannerPage.jsx';
+export { default as SubjectsPage } from './SubjectsPage.jsx';
+export { default as StatisticsPage } from './StatisticsPage.jsx';
+export { default as SyllabusPage } from './SyllabusPage.jsx';
+export { default as SyllabusTopic } from './SyllabusTopic.jsx';
+export { default as ExamsPage } from './ExamsPage.jsx';
+export { default as InsightsPage } from './InsightsPage.jsx';
+export { default as WeeklyGoalsPage } from './WeeklyGoalsPage.jsx';
+export { default as FriendsPage } from './FriendsPage.jsx';
+export { default as LeaderboardPage } from './LeaderboardPage.jsx';
+export { default as SettingsPage } from './SettingsPage.jsx';

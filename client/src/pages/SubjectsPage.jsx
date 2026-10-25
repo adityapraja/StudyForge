@@ -31,7 +31,7 @@ export default function SubjectsPage({ subjects, loadErrors, handleSubjectSave, 
           <form className="stack-form" onSubmit={handleSubjectSave}>
             <label>
               <span>Subject name</span>
-              <input type="text" name="name" placeholder="e.g. Biology" />
+              <input type="text" name="name" placeholder="e.g. Biology" required maxLength="40" />
             </label>
             <label>
               <span>Color</span>

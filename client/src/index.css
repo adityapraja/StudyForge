@@ -225,21 +225,237 @@ textarea { resize: vertical; }
 .button-row, .footer-actions, .mode-toggle { flex-wrap: wrap; }
 .session-card { padding: 16px 0; border-block: 1px solid var(--hairline); }
 .session-card p { margin: 6px 0; }
+.session-metrics p { margin: 4px 0; font-size: 0.875rem; }
+.top-gap-sm { margin-top: 8px; }
+
+.preset-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.preset-label { font-size: 0.8125rem; color: var(--muted); }
+.preset-pill { padding: 4px 10px; font-size: 0.8125rem; border: 1px solid var(--hairline); background: var(--surface); color: var(--ink); cursor: pointer; border-radius: 2px; font-family: var(--font-mono); }
+.preset-pill.active { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+
+.countdown-info-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.overtime-indicator { font-size: 0.8125rem; font-family: var(--font-mono); color: var(--ink); border: 1px dashed var(--ink); padding: 2px 8px; }
+
+.timer-display-wrap { display: flex; flex-direction: column; gap: 8px; }
+.timer-status-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.timer-badge { display: inline-flex; align-items: center; gap: 8px; padding: 4px 10px; border: 1px solid var(--hairline); font-size: 0.8125rem; font-family: var(--font-mono); background: var(--surface); }
+.timer-badge.paused { border-style: dashed; }
+.timer-badge.break { border-style: dotted; }
+
+.pulse-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ink); animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+@keyframes pulse-ring {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(1.25); }
+}
+
+.countdown-complete-banner { padding: 12px 16px; border: 1px solid var(--ink); background: var(--surface); display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.countdown-complete-banner p { margin: 0; font-size: 0.9375rem; }
+
+.label-with-count { display: flex; justify-content: space-between; align-items: center; }
+.char-count { font-size: 0.75rem; color: var(--muted); font-family: var(--font-mono); }
+.status-pill { display: inline-block; padding: 2px 8px; border: 1px solid var(--hairline); font-family: var(--font-mono); font-size: 0.8125rem; }
+.inline-link { background: none; border: none; padding: 0; color: var(--ink); text-decoration: underline; cursor: pointer; font: inherit; }
+
 .review-summary { padding-top: 16px; border-top: 1px solid var(--hairline); }
 
-.heatmap-grid {
+.panel.span-12 {
+  grid-column: span 12;
+}
+
+/* GitHub-Style Contribution Heatmap Calendar */
+.gh-heatmap-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.gh-heatmap-scroll {
+  width: 100%;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.gh-heatmap-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+
+.gh-heatmap-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.gh-heatmap-scroll::-webkit-scrollbar-thumb {
+  background: var(--hairline);
+  border-radius: 3px;
+}
+
+.gh-heatmap-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
+.gh-heatmap-container {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: max-content;
+}
+
+/* Month labels row */
+.gh-months-row {
   display: grid;
-  grid-template-columns: repeat(13, minmax(0, 1fr));
+  gap: 3px;
+  margin-left: 32px;
+  height: 15px;
+  line-height: 15px;
+}
+
+.gh-month-label {
+  font-size: 10px;
+  color: var(--muted);
+  font-family: var(--font-body);
+  user-select: none;
+  white-space: nowrap;
+}
+
+/* Main body with day labels and weeks grid */
+.gh-heatmap-body {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+/* Day-of-week labels (Mon, Wed, Fri) */
+.gh-days-col {
+  display: grid;
+  grid-template-rows: repeat(7, 11px);
+  gap: 3px;
+  width: 26px;
+  font-size: 9px;
+  line-height: 11px;
+  color: var(--muted);
+  font-family: var(--font-body);
+  user-select: none;
+  text-align: right;
+  padding-right: 2px;
+}
+
+.gh-day-label {
+  height: 11px;
+  line-height: 11px;
+}
+
+/* Weeks grid */
+.gh-weeks-grid {
+  display: flex;
   gap: 3px;
 }
-.heat-cell {
-  min-height: 18px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--hairline);
+
+.gh-week-col {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* Individual day cells */
+.gh-cell {
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  transition: transform 0.1s ease, outline 0.1s ease;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.gh-cell:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+.gh-cell:hover {
+  outline: 1.5px solid var(--ink);
+  outline-offset: 1px;
+  z-index: 2;
+  transform: scale(1.15);
+}
+
+.gh-cell-empty {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* GitHub Contribution Green Color Scale */
+.gh-level-0 {
+  background-color: #ebedf0;
+  border: 1px solid rgba(27, 31, 35, 0.06);
+}
+
+.gh-level-1 {
+  background-color: #9be9a8;
+  border: 1px solid rgba(27, 31, 35, 0.08);
+}
+
+.gh-level-2 {
+  background-color: #40c463;
+  border: 1px solid rgba(27, 31, 35, 0.08);
+}
+
+.gh-level-3 {
+  background-color: #30a14e;
+  border: 1px solid rgba(27, 31, 35, 0.08);
+}
+
+.gh-level-4 {
+  background-color: #216e39;
+  border: 1px solid rgba(27, 31, 35, 0.08);
+}
+
+/* Heatmap Footer: Hover Info & Legend */
+.gh-heatmap-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-top: 10px;
+  border-top: 1px solid var(--hairline);
+  font-size: 0.8125rem;
+}
+
+.gh-hover-info {
+  color: var(--muted);
+  font-family: var(--font-body);
+  min-height: 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.gh-hover-info strong {
   color: var(--ink);
-  font-family: var(--font-mono);
-  font-size: 0.55rem;
+  font-weight: 600;
+}
+
+.gh-legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  user-select: none;
+  margin-left: auto;
+}
+
+.gh-legend-cell {
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  display: inline-block;
+  box-sizing: border-box;
+}
+
+.gh-legend-label {
+  padding-inline: 4px;
 }
 .bar-chart {
   min-height: 220px;
@@ -322,8 +538,6 @@ textarea { resize: vertical; }
   .nav-button { padding-inline: 9px; font-size: 0.8rem; }
   .breakdown-row { grid-template-columns: 1fr 1fr; }
   .breakdown-row .progress-bar { grid-column: span 2; }
-  .heatmap-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
-  .heat-cell { min-height: 24px; }
   .goal-row { flex-wrap: wrap; }
   .goal-row input { min-width: 38%; }
   .syllabus-topic-row { grid-template-columns: 1fr; }
@@ -336,3 +550,113 @@ textarea { resize: vertical; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
 }
+
+/* Spectrum UI TaskCheckbox Styles */
+.task-checkbox-container {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  user-select: none;
+  touch-action: manipulation;
+  flex-shrink: 0;
+}
+.task-checkbox-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+  outline: none;
+}
+.task-checkbox-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  border: 1.5px solid var(--hairline);
+  background: var(--surface);
+  transition: border-color 0.2s, background-color 0.2s;
+  box-sizing: border-box;
+}
+.task-checkbox-button:hover .task-checkbox-box {
+  border-color: var(--muted);
+}
+.task-checkbox-box.checked {
+  border-color: var(--ink);
+}
+.task-checkbox-fill {
+  position: absolute;
+  inset: 0;
+  background: var(--ink);
+  border-radius: 4px;
+}
+.task-checkbox-check {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  padding: 15%;
+  color: var(--bg);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.task-checkbox-label-wrap {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  cursor: pointer;
+}
+.task-checkbox-label {
+  position: relative;
+  width: fit-content;
+  font-size: 0.9375rem;
+  line-height: 1.35;
+  color: var(--ink);
+  transition: color 0.15s;
+}
+.task-checkbox-label.checked {
+  color: var(--muted);
+}
+.task-checkbox-strike {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1.5px;
+  top: calc(50% - 0.75px);
+  background: var(--muted);
+}
+.task-done-input {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+.task-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.task-row input[type='text'], .task-row input:not([type]) {
+  flex: 1;
+}
+
+.goal-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.goal-row input[type='text'], .goal-row input:not([type]) {
+  flex: 2;
+}
+.goal-row select {
+  flex: 1.5;
+}
+
