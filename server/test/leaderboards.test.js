@@ -64,9 +64,11 @@ describe('Leaderboards', () => {
   it('requires authentication and validates period, category and scope filters', async () => {
     const user = await createTestUser();
     expect((await request(app).get('/api/leaderboards')).status).toBe(401);
+    expect((await request(app).get('/api/leaderboard')).status).toBe(401);
 
     for (const path of [
       '/api/leaderboards?period=year',
+      '/api/leaderboard?period=year',
       '/api/leaderboards?category=unknown',
       '/api/leaderboards?scope=private',
     ]) {

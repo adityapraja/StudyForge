@@ -14,6 +14,7 @@ import {
   createFriendRequest,
   getFriendRequests,
   getFriends,
+  getBlockedUsers,
   removeFriend,
   respondToFriendRequest,
   unblockUser,
@@ -59,6 +60,14 @@ router.get('/', async (req, res, next) => {
 router.delete('/:id', validate({ params: friendRequestParamsSchema }), async (req, res, next) => {
   try {
     res.status(200).json(await removeFriend(req.user.id, req.params.id));
+  } catch (error) {
+    next(error);
+  }
+});
+
+blocksRouter.get('/blocks', async (req, res, next) => {
+  try {
+    res.status(200).json(await getBlockedUsers(req.user.id));
   } catch (error) {
     next(error);
   }

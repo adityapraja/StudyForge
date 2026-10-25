@@ -48,6 +48,13 @@ describe('Session CSV export', () => {
     expect(response.text).toContain(`"'=SUM(1,2), ""deep""\nnotes"`);
     expect(response.text).not.toContain('private');
     expect(response.text).not.toContain('password_hash');
+
+    const extensionlessResponse = await request(app)
+      .get('/api/me/export')
+      .set('Cookie', [first.cookie]);
+    expect(extensionlessResponse.status).toBe(200);
+    expect(extensionlessResponse.headers['content-type']).toContain('text/csv');
+    expect(extensionlessResponse.text).toBe(response.text);
   });
 
   it('requires authentication and returns a header for an empty export', async () => {

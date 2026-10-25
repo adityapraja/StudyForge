@@ -47,6 +47,7 @@ export const createApp = () => {
   app.use('/api/exams', examsRoutes);
   app.use('/api/friends', friendsRoutes);
   app.use('/api', blocksRouter);
+  app.use('/api/leaderboard', leaderboardsRoutes);
   app.use('/api/leaderboards', leaderboardsRoutes);
   app.use('/api/subjects', subjectsRoutes);
   app.use('/api/sessions', sessionsRoutes);

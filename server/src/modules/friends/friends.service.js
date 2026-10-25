@@ -295,3 +295,15 @@ export const unblockUser = async (userId, blockedId) => {
   if (rows.length === 0) throw new AppError(404, 'NOT_FOUND', 'Block not found');
   return { ok: true };
 };
+
+export const getBlockedUsers = async (userId) => {
+  const { rows } = await query(
+    `SELECT b.blocked_id AS user_id, u.username
+     FROM blocks b
+     JOIN users u ON u.id = b.blocked_id
+     WHERE b.blocker_id = $1
+     ORDER BY u.username ASC`,
+    [userId]
+  );
+  return { items: rows };
+};

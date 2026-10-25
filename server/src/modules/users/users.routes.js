@@ -76,7 +76,7 @@ router.get('/goals/weekly', async (req, res, next) => {
   }
 });
 
-router.get('/export.csv', async (req, res, next) => {
+router.get(['/export', '/export.csv'], async (req, res, next) => {
   try {
     const csv = await exportSessionsCsv(req.user.id, req.user.time_zone);
     res

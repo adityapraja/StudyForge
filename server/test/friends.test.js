@@ -231,6 +231,15 @@ describe('Friends and privacy', () => {
       .send({ user_id: first.user.id });
     expect(block.status).toBe(200);
     expect(block.body).toEqual({ ok: true });
+
+    const blockedList = await request(app).get('/api/blocks').set('Cookie', [second.cookie]);
+    expect(blockedList.status).toBe(200);
+    expect(blockedList.body.items).toHaveLength(1);
+    expect(blockedList.body.items[0]).toMatchObject({
+      user_id: first.user.id,
+      username: first.user.username,
+    });
+
     expect((await request(app).get('/api/friends/requests').set('Cookie', [first.cookie])).body.incoming).toEqual([]);
 
     const blockedRequest = await request(app)
