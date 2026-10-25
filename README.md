@@ -4,7 +4,7 @@
 
 # StudyForge — Modern Study Habit Tracker
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-study--forge--khaki.vercel.app-000000.svg?style=flat)](https://study-forge-khaki.vercel.app/)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-studyforge.adityapraja.in-000000.svg?style=flat)](https://studyforge.adityapraja.in/)
 [![CI Test Suite](https://github.com/adityapraja/StudyForge/actions/workflows/ci.yml/badge.svg)](https://github.com/adityapraja/StudyForge/actions/workflows/ci.yml)
 [![Node Version](https://img.shields.io/badge/Node.js-v20%20%7C%20v22+-green.svg)](https://nodejs.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue.svg)](https://www.postgresql.org/)
@@ -28,7 +28,7 @@ Whether preparing for high-stakes exams, managing university coursework, or buil
 
 > [!TIP]
 > 🚀 **Access the deployed application here:**  
-> **[https://study-forge-khaki.vercel.app/](https://study-forge-khaki.vercel.app/)**  
+> **[https://studyforge.adityapraja.in/](https://studyforge.adityapraja.in/)**  
 > *No local installation required — create an account and start tracking immediately.*
 
 ---

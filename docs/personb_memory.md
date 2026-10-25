@@ -766,14 +766,14 @@ Test Files  19 passed (19)
 **Change:**
 - Verified live production deployment and updated documentation:
   1. **Live Production URLs:**
-     - **Frontend:** `https://study-forge-khaki.vercel.app/` (Hosted on Vercel Edge CDN)
+     - **Frontend:** `https://studyforge.adityapraja.in/` (Hosted on Vercel Edge CDN with custom domain)
      - **Backend API:** `https://studyforge-api-euwp.onrender.com` (Express 5 Web Service on Render)
      - **Database:** Neon serverless PostgreSQL 16
   2. **README.md Restructuring:**
      - Overhauled [`README.md`](../README.md) per user request to follow a streamlined, feature-centric structure:
        - Project Title & Hero branding.
        - "What is StudyForge?" conceptual summary emphasizing the honesty-first philosophy.
-       - Public deployment link (`https://study-forge-khaki.vercel.app/`).
+       - Public deployment link (`https://studyforge.adityapraja.in/`).
        - Features organized by capability (Focus Timer, Anti-Cheat, Progression, Daily Planner, Syllabus, Analytics, Social/Leaderboards, Privacy) rather than developmental phases.
        - Comprehensive Tech Stack table & Monorepo Directory layout.
        - Step-by-step local machine setup & testing instructions.

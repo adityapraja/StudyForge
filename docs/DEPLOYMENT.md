@@ -73,7 +73,7 @@ flowchart LR
    | `PORT` | `3000` | Render injects `PORT` automatically if omitted |
    | `DATABASE_URL` | `postgresql://...neon.tech/neondb?sslmode=require` | Paste your Neon connection string from Step 1 |
    | `JWT_SECRET` | `your-secure-random-secret-at-least-32-chars-long` | Generate a strong random key |
-   | `CLIENT_URL` | `https://study-forge-khaki.vercel.app` | Your Vercel frontend production URL |
+   | `CLIENT_URL` | `https://studyforge.adityapraja.in` | Your frontend production URL (or Vercel default domain) |
    | `AUTO_INIT_DB` | `true` | **Crucial:** Automatically creates all tables and runs schema migrations on first startup! |
    | `COOKIE_SAME_SITE` | `lax` | Use `lax` when using Vercel proxy (Option A), or `none` if calling cross-origin (Option B) |
 
@@ -133,13 +133,13 @@ You have two options for connecting the frontend to your backend:
    - **Build Command:** `npm run build` (default)
    - **Output Directory:** `dist` (default)
 6. Click **Deploy**.
-7. Vercel builds and assigns the live production URL:
+7. Vercel builds and assigns the live production URL (configure your custom domain `studyforge.adityapraja.in` in Project Settings > Domains):
    ```text
-   https://study-forge-khaki.vercel.app/
+   https://studyforge.adityapraja.in/
    ```
 8. **Final Step:** Go back to Render > `studyforge-api-euwp` > **Environment Variables**, and confirm `CLIENT_URL` is set to:
    ```text
-   CLIENT_URL=https://study-forge-khaki.vercel.app
+   CLIENT_URL=https://studyforge.adityapraja.in
    ```
 
 ---
